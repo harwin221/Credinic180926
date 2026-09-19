@@ -20,11 +20,14 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Agente (opcional)</label>
-                            <select name="cobrador[]" id="selectAgenteColocacion" class="form-select select2-multiple" multiple style="width:100%">
+                            <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;">
                                 @foreach($listaCobradores as $key => $nombre)
-                                    <option value="{{ $key }}">{{ $nombre }}</option>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="cobrador[]" value="{{$key}}" id="col_cob_{{$loop->index}}">
+                                    <label class="form-check-label" for="col_cob_{{$loop->index}}">{{$nombre}}</label>
+                                </div>
                                 @endforeach
-                            </select>
+                            </div>
                         </div>
                     </div>
                 </div>

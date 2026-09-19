@@ -3,6 +3,15 @@
     Home Agentes
 @endsection
 @section('content')
+    {{-- BOTÓN BÚSQUEDA CLIENTE EXTERNO --}}
+    <div class="row mb-2">
+        <div class="col-md-12 text-end">
+            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalClienteExterno">
+                <i class="fa fa-search"></i> Buscar Cliente Externo
+            </button>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-md-12">
             <!-- Nav tabs -->
@@ -176,4 +185,100 @@
             </div>
         </div>
     </div>
+
+    {{-- MODAL BUSCAR CLIENTE EXTERNO --}}
+    <div class="modal fade" id="modalClienteExterno" tabindex="-1" aria-labelledby="modalClienteExternoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title" id="modalClienteExternoLabel">
+                        <i class="fa fa-search"></i> Buscar Cliente Externo
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="buscarClienteExterno" class="form-control"
+                               placeholder="Buscar por nombre, apellido o cédula...">
+                        <button class="btn btn-warning" type="button" id="btnBuscarExterno">
+                            <i class="fa fa-search"></i> Buscar
+                        </button>
+                    </div>
+                    <div id="resultadosClientesExternos">
+                        <p class="text-muted text-center">Escriba un nombre, apellido o cédula para buscar.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+@endsection
+
+@section('script')
+<script>
+    // URL base para crear abono
+    const urlCreateAbono = '{{ route('agentes.abonos.createAbono') }}';
+
+    // Debounce para filtrado en tiempo real
+    let debounceTimer = null;
+    document.getElementById('buscarClienteExterno').addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(buscarClienteExterno, 400);
+    });
+
+    // También buscar al hacer clic en el botón o presionar Enter
+    document.getElementById('btnBuscarExterno').addEventListener('click', buscarClienteExterno);
+    document.getElementById('buscarClienteExterno').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            clearTimeout(debounceTimer);
+            buscarClienteExterno();
+        }
+    });
+
+    function buscarClienteExterno() {
+        const buscar = document.getElementById('buscarClienteExterno').value.trim();
+        if (buscar.length < 2) {
+            document.getElementById('resultadosClientesExternos').innerHTML =
+                '<p class="text-muted text-center">Ingrese al menos 2 caracteres para buscar.</p>';
+            return;
+        }
+
+        document.getElementById('resultadosClientesExternos').innerHTML =
+            '<p class="text-center"><i class="fa fa-spinner fa-spin"></i> Buscando...</p>';
+
+        fetch(`{{ route('agentes.user.clientes.getListClientesExternos') }}?buscar=${encodeURIComponent(buscar)}`)
+            .then(response => response.text())
+            .then(html => {
+                const contenedor = document.getElementById('resultadosClientesExternos');
+                contenedor.innerHTML = html;
+
+                // Reemplazar botones con enlace correcto usando data-prestamo-id
+                contenedor.querySelectorAll('table tbody tr').forEach(function(fila) {
+                    const tdAccion = fila.querySelector('td:last-child');
+                    if (tdAccion) {
+                        const enlace = tdAccion.querySelector('a.btnSelCliente');
+                        if (enlace) {
+                            const prestamoId = enlace.getAttribute('data-prestamo-id');
+                            const url = urlCreateAbono + '?prestamo=' + prestamoId;
+                            tdAccion.innerHTML = `<a href="${url}" class="btn btn-sm btn-success" title="Aplicar abono">
+                                <i class="fa fa-plus"></i> Abonar
+                            </a>`;
+                        }
+                    }
+                });
+            })
+            .catch(() => {
+                document.getElementById('resultadosClientesExternos').innerHTML =
+                    '<p class="text-danger text-center">Error al realizar la búsqueda.</p>';
+            });
+    }
+
+    // Limpiar búsqueda al cerrar el modal
+    document.getElementById('modalClienteExterno').addEventListener('hidden.bs.modal', function () {
+        clearTimeout(debounceTimer);
+        document.getElementById('buscarClienteExterno').value = '';
+        document.getElementById('resultadosClientesExternos').innerHTML =
+            '<p class="text-muted text-center">Escriba un nombre, apellido o cédula para buscar.</p>';
+    });
+</script>
 @endsection

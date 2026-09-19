@@ -10,7 +10,7 @@
 <body>
     <div class="screen-actions no-print">
         {{html()->form('GET', route('reportes.prestamosVencidos.index'))->open()}}
-            <input type="hidden" name="cobrador" value="{{$cobradorSel}}">
+            @foreach((array)$cobradorSel as $c)<input type="hidden" name="cobrador[]" value="{{$c}}">@endforeach
             <button type="submit" name="pdf" value="pdf" class="btn-act primary" formtarget="_blank"><i class="fas fa-file-pdf"></i> PDF</button>
             <button type="button" class="btn-act primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
             <a href="{{ route('reportes.prestamosVencidos.index') }}" class="btn-act"><i class="fas fa-arrow-left"></i> Volver</a>

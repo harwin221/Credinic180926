@@ -2,18 +2,29 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\MobileApiController;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
 */
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// ─── API Móvil CrediNica ──────────────────────────────────────────────────────
+Route::prefix('mobile')->group(function () {
+
+    // Público — no requiere token
+    Route::post('/login', [MobileApiController::class, 'login']);
+
+    // Protegido con Sanctum
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/cartera',   [MobileApiController::class, 'cartera']);
+        Route::get('/dashboard', [MobileApiController::class, 'dashboard']);
+        Route::post('/abono',    [MobileApiController::class, 'abono']);
+    });
+});
+

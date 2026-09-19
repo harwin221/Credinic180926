@@ -12,7 +12,7 @@
         <form method="GET" action="{{ route('reportes.detalleColocacion.index') }}">
             <input type="hidden" name="desde"   value="{{$desde}}">
             <input type="hidden" name="hasta"   value="{{$hasta}}">
-            <input type="hidden" name="cobrador" value="{{$cobrador}}">
+            @foreach((array)$cobrador as $c)<input type="hidden" name="cobrador[]" value="{{$c}}">@endforeach
             <input type="hidden" name="tipo"    value="{{$tipo}}">
             <button type="submit" name="excel1" value="1" class="btn-act success"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="submit" name="pdf"    value="1" class="btn-act primary" formtarget="_blank"><i class="fas fa-file-pdf"></i> PDF</button>

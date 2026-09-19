@@ -12,7 +12,7 @@
     <div class="screen-actions no-print">
         {{html()->form('GET', route('reportes.saldoCartera'))->open()}}
             <input type="hidden" name="cliente"    value="{{$clienteSel}}">
-            <input type="hidden" name="cobrador"   value="{{$cobradorSel}}">
+            @foreach((array)$cobradorSel as $c)<input type="hidden" name="cobrador[]" value="{{$c}}">@endforeach
             <input type="hidden" name="frecuencia" value="{{$frecuenciaSel}}">
             <input type="hidden" name="estado"     value="{{$estado}}">
             <input type="hidden" name="fin"        value="{{$fin}}">

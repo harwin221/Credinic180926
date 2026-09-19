@@ -164,9 +164,9 @@ class prestamosController extends Controller
     public function show(string $id)
     {
         $prestamo = prestamosModel::where('id', decode($id))->first();
-        $vendedores = User::where('tipo_usuario', 2)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $cobradores = User::where('tipo_usuario', 4)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $admins = User::whereIn('tipo_usuario', [1, 2, 4, 5])->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $vendedores = User::admin()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $cobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $admins = User::whereIn('tipo_usuario', [1, 2, 4, 5])->where('estado', 1)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $clasificaciones = [
             '1' => 'Incobrable'
@@ -661,36 +661,51 @@ class prestamosController extends Controller
     {
         $buscar = $request->buscar;
         $estado = $request->estado;
-//        $solicitudes = solicitudPrestamoModel::when($buscar, function ($query) use ($buscar) {
-//            $query->whereHas('user', function ($query) use ($buscar) {
-//                $query->where('nombres', 'like', '%' . $buscar . '%')
-//                    ->orWhere('apellidos', 'like', '%' . $buscar . '%');
-//            });
-//        })
-//            ->when($estado, function ($query) use ($estado) {
-//                $query->where('estado', $estado);
-//            })->orderBy('id', 'desc')->paginate(30);
+
+        $agentesAsignados = userAsignadoModel::where('user_id', \Auth::user()->id)
+            ->get()->pluck('admin_asignado_id')->toArray();
 
         if (!$estado)
             $estado = 1;
-        $prestamos = prestamosModel::
-        when($estado != 4, function ($query) use ($estado) {//diferente de todos
-            $query->where('estado_aprobacion', $estado);
-        })
+
+        $prestamos = prestamosModel::when($estado != 4, function ($query) use ($estado) {
+                $query->where('estado_aprobacion', $estado);
+            })
             ->when($buscar, function ($query) use ($buscar) {
                 $query->whereHas('cliente', function ($query) use ($buscar) {
                     $query->where('nombres', 'like', '%' . $buscar . '%')
                         ->orWhere('apellidos', 'like', '%' . $buscar . '%');
                 });
             })
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
             ->where('estado_aprobacion', '!=', null)
             ->orderBy('id', 'desc')
             ->paginate(30);
 
-        $solicitudesPendientes = prestamosModel::where('estado_aprobacion', 1)->where('desembolsado', 0)->orderBy('id', 'desc')->get();
-        $solicitudesAprobadasHoy = prestamosModel::where('estado_aprobacion', 2)->whereDate('created_at', Carbon::now()->toDateString())->orderBy('id', 'desc')->get();
+        $solicitudesPendientes = prestamosModel::where('estado_aprobacion', 1)->where('desembolsado', 0)
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
+            ->orderBy('id', 'desc')->get();
+
+        $solicitudesAprobadasHoy = prestamosModel::where('estado_aprobacion', 2)
+            ->whereDate('created_at', Carbon::now()->toDateString())
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
+            ->orderBy('id', 'desc')->get();
+
         $solicitudesAprobadas = $solicitudesAprobadasHoy->count();
-        $solicitudesRechazadasHoy = prestamosModel::where('estado_aprobacion', 3)->whereDate('created_at', Carbon::now()->toDateString())->orderBy('id', 'desc')->get();
+
+        $solicitudesRechazadasHoy = prestamosModel::where('estado_aprobacion', 3)
+            ->whereDate('created_at', Carbon::now()->toDateString())
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
+            ->orderBy('id', 'desc')->get();
+
         $solicitudesRechazadas = $solicitudesRechazadasHoy->count();
 
         return view('prestamos.solicitudes.indexSolicitud', compact('prestamos', 'solicitudesAprobadas', 'solicitudesRechazadas', 'solicitudesPendientes', 'solicitudesAprobadasHoy', 'solicitudesRechazadasHoy'));

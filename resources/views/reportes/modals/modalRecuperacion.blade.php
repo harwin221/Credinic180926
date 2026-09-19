@@ -18,8 +18,15 @@
                         <input type="date" name="hasta" class="form-control" id="rec_hasta" required>
                     </div>
                     <div class="col-12 col-md-3 mb-3">
-                        <label for="rec_cobrador"><strong>Cobrador:</strong></label>
-                        {{html()->select('cobrador[]', (isset($listaCobradores) ? $listaCobradores : []), null)->class('form-control select2-multiple')->id('rec_cobrador')->multiple()->style('width: 100%')}}
+                        <label><strong>Cobrador:</strong></label>
+                        <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;">
+                            @foreach(isset($listaCobradores) ? $listaCobradores : [] as $key => $nombre)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="cobrador[]" value="{{$key}}" id="rec_cob_{{$loop->index}}">
+                                <label class="form-check-label" for="rec_cob_{{$loop->index}}">{{$nombre}}</label>
+                            </div>
+                            @endforeach
+                        </div>
                     </div>
                     <div class="col-12 col-md-3 mb-3">
                         <label for="rec_tipo"><strong>Tipo:</strong></label>

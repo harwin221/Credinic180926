@@ -10,8 +10,15 @@
             <div class="modal-body">
                 <div class="row">
                     <div class="col-12 col-md-6 mb-3">
-                        <label for="ec_cobrador"><strong>Cobrador / Gestor:</strong></label>
-                        {{html()->select('cobrador[]', (isset($listaCobradores) ? $listaCobradores : []), null)->class('form-control select2-multiple')->id('ec_cobrador')->multiple()->style('width: 100%')}}
+                        <label><strong>Cobrador / Gestor:</strong></label>
+                        <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;">
+                            @foreach(isset($listaCobradores) ? $listaCobradores : [] as $key => $nombre)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="cobrador[]" value="{{$key}}" id="ec_cob_{{$loop->index}}">
+                                <label class="form-check-label" for="ec_cob_{{$loop->index}}">{{$nombre}}</label>
+                            </div>
+                            @endforeach
+                        </div>
                     </div>
                     <div class="col-12 col-md-6 mb-3">
                         <label for="ec_cliente"><strong>Cliente:</strong></label>

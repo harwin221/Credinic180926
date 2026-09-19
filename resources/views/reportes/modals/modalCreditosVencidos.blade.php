@@ -21,8 +21,15 @@
                         <input type="date" name="hasta" class="form-control rounded-pill" value="{{date('Y-m-d')}}" id="hasta">
                     </div>
                     <div class="col-md-12 mb-3">
-                        <label for="cobrador" class="form-label font-weight-bold">Cobrador:</label>
-                        {{html()->select('cobrador[]', $listaCobradores, null)->class('form-control select2-multiple redonde-pill')->multiple()->style(['width' => '100%'])}}
+                        <label class="form-label font-weight-bold">Cobrador:</label>
+                        <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;">
+                            @foreach($listaCobradores as $key => $nombre)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="cobrador[]" value="{{$key}}" id="crv_cob_{{$loop->index}}">
+                                <label class="form-check-label" for="crv_cob_{{$loop->index}}">{{$nombre}}</label>
+                            </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
             </div>

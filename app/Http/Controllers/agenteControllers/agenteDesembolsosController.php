@@ -620,7 +620,7 @@ class agenteDesembolsosController extends Controller
 
     public function getAgentes()
     {
-        return response()->json(['' => '* SELECCIONE UN AGENTE *'] + User::where('tipo_usuario', 4)->get()->pluck('full_name', 'id_enc')->toArray());
+        return response()->json(['' => '* SELECCIONE UN AGENTE *'] + User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray());
     }
 
     public function getAdministrativos()

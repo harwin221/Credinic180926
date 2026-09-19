@@ -2,7 +2,7 @@
     <label for="nombre" class="fw-bold required">Nombres:</label>
     <div class="input-group">
         <span class="input-group-text"><i class="fa fa-user"></i></span>
-        {{html()->text('nombres')->class(['form-control'])->id('nombre')->required()}}
+        {{html()->text('nombres')->class(['form-control text-uppercase'])->id('nombre')->required()}}
     </div>
     @error('nombres')
     <strong style="color: red">{{$message}}</strong>
@@ -12,7 +12,7 @@
     <label for="apellidos" class="fw-bold required">Apellidos:</label>
     <div class="input-group">
         <span class="input-group-text"><i class="fa fa-user"></i></span>
-        {{html()->text('apellidos')->class(['form-control'])->id('apellidos')->required()}}
+        {{html()->text('apellidos')->class(['form-control text-uppercase'])->id('apellidos')->required()}}
     </div>
     @error('apellidos')
     <strong style="color: red">{{$message}}</strong>
@@ -22,7 +22,7 @@
     <label for="cedula" class="fw-bold required">Cédula:</label>
     <div class="input-group">
         <span class="input-group-text"><i class="fa fa-id-card"></i></span>
-        {{html()->text('cedula')->class(['form-control'])->id('cedula')->required()}}
+        {{html()->text('cedula')->class(['form-control text-uppercase'])->id('cedula')->required()}}
     </div>
     @error('cedula')
     <strong style="color: red">{{$message}}</strong>
@@ -92,9 +92,22 @@
     <label for="direccion" class="fw-bold">Dirección:</label>
     <div class="input-group">
         <span class="input-group-text"><i class="fa fa-address-book"></i></span>
-        {{html()->textarea('direccion')->class(['form-control'])->id('direccion')}}
+        {{html()->textarea('direccion')->class(['form-control text-uppercase'])->id('direccion')}}
     </div>
 </div>
+
+<script>
+// Garantiza que el valor enviado al servidor también sea mayúsculas
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.text-uppercase').forEach(function (el) {
+        el.addEventListener('input', function () {
+            var pos = el.selectionStart;
+            el.value = el.value.toUpperCase();
+            el.setSelectionRange(pos, pos);
+        });
+    });
+});
+</script>
 
 {{--       <div class="form-group">
            <label for="estado" class="fw-bold">Estado:</label>

@@ -41,7 +41,7 @@ class reportesController extends Controller
     {
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
         
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -72,7 +72,7 @@ class reportesController extends Controller
             $finSel = Carbon::now();
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -171,7 +171,7 @@ class reportesController extends Controller
         $cobradorSel = $request->cobrador; // array o null
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -232,7 +232,7 @@ class reportesController extends Controller
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
 
-        $listaCobradores = User::whereIn('tipo_usuario', [2, 4])
+        $listaCobradores = User::whereIn('tipo_usuario', [2, 4])->where('estado', 1)
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
@@ -425,7 +425,7 @@ class reportesController extends Controller
     public function cuotasVencidas(Request $request)
     {
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -506,7 +506,7 @@ class reportesController extends Controller
     {
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -527,7 +527,8 @@ class reportesController extends Controller
                 $query->where('prestamos.user_id', decode($cliente));
             })
             ->when($cobrador, function ($query) use ($cobrador) {
-                $query->where('prestamos.agente_id', decode($cobrador));
+                $ids = array_map('decode', (array)$cobrador);
+                $query->whereIn('prestamos.agente_id', $ids);
             })
             ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
                 $query->whereIn('prestamos.agente_id', $agentesAsignados);
@@ -563,7 +564,7 @@ class reportesController extends Controller
     public function creditosVencidos(Request $request)
     {
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
@@ -611,7 +612,8 @@ class reportesController extends Controller
             ->whereNull('p.deleted_at')
             ->whereRaw("(COALESCE(s.total_esperado, 0) - COALESCE(t_abono.total_abonado, 0)) > 0.5")
             ->when($cobrador, function ($query) use ($cobrador) {
-                $query->where('p.agente_id', decode($cobrador));
+                $ids = array_map('decode', (array)$cobrador);
+                $query->whereIn('p.agente_id', $ids);
             })
             ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
                 $query->whereIn('p.agente_id', $agentesAsignados);
@@ -670,7 +672,7 @@ class reportesController extends Controller
     public function listaArqueo(Request $request)
     {
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -703,6 +705,7 @@ class reportesController extends Controller
         $abonos = abonosModel::whereDate('fecha_abono', $arqueo->fecha_arqueo)
             ->where('created_user_id', $arqueo->cobrador_id)
             ->where('estado', 1)
+            ->with(['prestamo', 'prestamo.cliente'])
             ->get();
 
         if ($abonos) {
@@ -735,13 +738,14 @@ class reportesController extends Controller
         $cobrador = $request->get('cobrador');
         $fecha = $request->get('fecha');
         $abonos = [];
-        $listaCobradores = User::agente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaCobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $total_recuperado = 0;
         if ($cobrador) {
             $abonos = abonosModel::whereDate('fecha_abono', $fecha)
                 ->where('created_user_id', decode($cobrador))
                 ->where('estado', 1)
+                ->with(['prestamo', 'prestamo.cliente'])
                 ->get();
 
             if ($abonos) {
@@ -907,7 +911,7 @@ class reportesController extends Controller
         $cobrador = $request->cobrador;
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1013,7 +1017,7 @@ class reportesController extends Controller
         }
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1065,7 +1069,7 @@ class reportesController extends Controller
 
     public function desembolsos(Request $request)
     {
-        $listaCobradores = User::agente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaCobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $desembolsos = prestamosModel::paginate(50);
 
@@ -1103,7 +1107,7 @@ class reportesController extends Controller
         $anyoSeleccionado = $request->anio;
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1130,7 +1134,7 @@ class reportesController extends Controller
         $cuotas = [];
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1210,7 +1214,7 @@ class reportesController extends Controller
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1296,7 +1300,8 @@ class reportesController extends Controller
                     $query->where('p.user_id', decode($clienteSel));
                 })
                 ->when($cobradorSel, function ($query) use ($cobradorSel) {
-                    $query->where('p.agente_id', decode($cobradorSel));
+                    $ids = array_map('decode', (array)$cobradorSel);
+                    $query->whereIn('p.agente_id', $ids);
                 })
                 ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
                     $query->whereIn('p.agente_id', $agentesAsignados);
@@ -1361,7 +1366,7 @@ class reportesController extends Controller
     public function estadoClientes(Request $request)
     {
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $listaCobradores = User::agente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaCobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         $estado = $request->get('estado');
         $cliente = $request->get('cliente');
         $cobrador = $request->get('cobrador');
@@ -1389,8 +1394,9 @@ class reportesController extends Controller
                 $query->where('id', decode($cliente));
             })
             ->when($cobrador, function ($query) use ($cobrador) {
-                $query->whereHas('prestamos', function ($query) use ($cobrador) {
-                    $query->where('agente_id', decode($cobrador))->where('desembolsado', 1);
+                $ids = array_map('decode', (array)$cobrador);
+                $query->whereHas('prestamos', function ($query) use ($ids) {
+                    $query->whereIn('agente_id', $ids)->where('desembolsado', 1);
                 });
             })
             ->orderBy('nombres')
@@ -1580,7 +1586,7 @@ class reportesController extends Controller
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })
@@ -1636,7 +1642,7 @@ class reportesController extends Controller
         $hasta    = $request->get('hasta');
         $cobrador = $request->get('cobrador');
 
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->whereIn('id', $agentesAsignados);
             })
@@ -1719,7 +1725,7 @@ class reportesController extends Controller
     public function carteraDiaria(Request $request)
     {
         $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
-        $listaCobradores = User::agente()
+        $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
             })

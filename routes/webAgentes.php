@@ -47,6 +47,7 @@ Route::middleware(['auth','accessCobradorTimeAdminMiddleware','checkUserActive']
 
         Route::get('/agente/user/clientes/getDatosCliente/{id}', 'getDatosCliente')->name('agentes.user.clientes.getDatosCliente');
         Route::get('/agente/user/clientes/getListClientes', 'getListClientes')->name('agentes.user.clientes.getListClientes');
+        Route::get('/agente/user/clientes/getListClientesExternos', 'getListClientesExternos')->name('agentes.user.clientes.getListClientesExternos');
         Route::post('/agente/abonos/cliente/getInfoCliente', 'getInfoCliente')->name('agentes.abonos.getInfoCliente');
         Route::post('/agente/abonos/cuotas/getCuotasPrestamo', 'getCuotasPendientesPrestamos')->name('agentes.abonos.getCuotasPrestamo');
         Route::post('/agente/abonos/cuotas/getDetalleCuota', 'getDetalleCuota')->name('agentes.abonos.getDetalleCuota');

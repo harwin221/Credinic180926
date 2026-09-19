@@ -14,8 +14,15 @@
                         {{html()->select('cliente', [0=>'Todos'] + (isset($listaClientes) ? $listaClientes : []), null)->class('form-control select2')->id('des_cliente')->style('width: 100%')}}
                     </div>
                     <div class="col-12 col-md-6 mb-3">
-                        <label for="des_cobrador"><strong>Cobrador:</strong></label>
-                        {{html()->select('cobrador[]', (isset($listaCobradores) ? $listaCobradores : []), null)->class('form-control select2-multiple')->id('des_cobrador')->multiple()->style('width: 100%')}}
+                        <label><strong>Cobrador:</strong></label>
+                        <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;">
+                            @foreach(isset($listaCobradores) ? $listaCobradores : [] as $key => $nombre)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="cobrador[]" value="{{$key}}" id="des_cob_{{$loop->index}}">
+                                <label class="form-check-label" for="des_cob_{{$loop->index}}">{{$nombre}}</label>
+                            </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
                 <div class="row">

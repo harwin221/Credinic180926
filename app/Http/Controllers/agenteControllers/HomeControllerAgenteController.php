@@ -380,7 +380,7 @@ class HomeControllerAgenteController extends Controller
         $desde = $request->desde;
         $hasta = $request->hasta;
 
-        $listaCobradores = User::agente()->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaCobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $sumaAbonoDia = array();
         if($desde && $hasta){
@@ -450,6 +450,39 @@ class HomeControllerAgenteController extends Controller
             })
             ->distinct()
             ->paginate(15);
+        return view('abonos.listaClientes', compact('clientes'))->render();
+    }
+
+    // Buscar clientes que NO son de la cartera del agente logueado
+    public function getListClientesExternos(Request $request)
+    {
+        $buscar = $request->buscar;
+
+        // IDs de clientes que ya pertenecen a la cartera del agente (para excluirlos)
+        $idsCarteraPropia = prestamosModel::where('agente_id', userLogeado()->id)
+            ->whereNull('fecha_clasificacion')
+            ->where('estado', 1)
+            ->where('desembolsado', 1)
+            ->pluck('user_id')
+            ->toArray();
+
+        $clientes = User::cliente()
+            ->join('prestamos as P', 'P.user_id', 'users.id')
+            ->whereNull('P.fecha_clasificacion')
+            ->where('P.estado', 1)
+            ->where('P.desembolsado', 1)
+            ->where('P.agente_id', '!=', userLogeado()->id) // solo externos
+            ->whereNotIn('users.id', $idsCarteraPropia)     // que no tenga préstamo también con este agente
+            ->select('users.*', 'P.id as prestamo_id')
+            ->when($buscar, function ($query) use ($buscar) {
+                $query->where(function ($query2) use ($buscar) {
+                    $query2->where('nombres', 'like', '%' . $buscar . '%')
+                        ->orWhere('apellidos', 'like', '%' . $buscar . '%')
+                        ->orWhere('cedula', 'like', '%' . $buscar . '%');
+                });
+            })
+            ->paginate(15);
+
         return view('abonos.listaClientes', compact('clientes'))->render();
     }
     public function getDatosCliente($clienteId)

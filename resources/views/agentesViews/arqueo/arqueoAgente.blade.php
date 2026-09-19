@@ -350,7 +350,14 @@
                     <tr>
                         <td>{{$loop->index+1}}</td>
                         <td>{{$ab->prestamo->consecutivo}}</td>
-                        <td>{{$ab->prestamo->cliente->full_name}}</td>
+                        <td>
+                            {{$ab->prestamo->cliente->full_name}}
+                            @if($ab->prestamo->agente_id !== $ab->created_user_id)
+                                <span style="background:#ffc107;color:#000;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;">
+                                    Externo
+                                </span>
+                            @endif
+                        </td>
                         <td>{{$ab->total_abonado_capital}}</td>
                         <td>{{$ab->total_abonado_interes}}</td>
                         <td>{{$ab->total_abonado}}</td>
