@@ -1,0 +1,213 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\departamentoModel;
+use App\Models\departamentoMunicipioModel;
+use DB;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Database\Seeder;
+
+class departamento_municipio_seeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        $departamentos = [
+            'Managua',
+            'Masaya',
+            'León',
+            'Granada',
+            'Carazo',
+            'Estelí',
+            'Rivas',
+            'Chinandega',
+            'Chontales',
+            'Madriz',
+            'Matagalpa',
+            'Nueva Segovia',
+            'Boaco',
+            'Rio San Juan',
+            'Caribe Sur',
+            'Jinotega',
+            'Caribe Norte',
+            'Otro',
+            'Ninguno'
+        ];
+
+        $municipios = [
+            [1, 1, 'Managua'],
+            [2, 1, 'Ciudad Sandino'],
+            [3, 1, 'El Crucero'],
+            [4, 1, 'Mateare'],
+            [5, 1, 'San Francisco Libre'],
+            [6, 1, 'San Rafael del Sur'],
+            [7, 1, 'Ticuantepe'],
+            [8, 1, 'Tipitapa'],
+            [9, 1, 'Villa Carlos Fonseca'],
+            [10, 2, 'Masaya'],
+            [11, 2, 'Catarina'],
+            [12, 2, 'La Concepción'],
+            [13, 2, 'Masatepe'],
+            [14, 2, 'Nandasmo'],
+            [15, 2, 'Nindirí'],
+            [16, 2, 'Niquinohomo'],
+            [17, 2, 'San Juan de Oriente'],
+            [18, 2, 'Tisma'],
+            [19, 3, 'León'],
+            [20, 3, 'Achuapa'],
+            [21, 3, 'El Jicaral'],
+            [22, 3, 'El Sauce'],
+            [23, 3, 'La Paz Centro'],
+            [25, 3, 'Nagarote'],
+            [26, 3, 'Quezalguaque'],
+            [27, 3, 'Santa Rosa del Peñón'],
+            [28, 3, 'Telica'],
+            [29, 4, 'Granada'],
+            [30, 4, 'Diria'],
+            [31, 4, 'Diriomo'],
+            [32, 4, 'Nandaime'],
+            [33, 5, 'Jinotepe'],
+            [34, 5, 'Diriamba'],
+            [35, 5, 'Dolores'],
+            [36, 5, 'El Rosario'],
+            [37, 5, 'La Conquista'],
+            [38, 5, 'La Paz'],
+            [39, 5, 'San Marco'],
+            [40, 5, 'Santa Teresa'],
+            [41, 6, 'Estelí'],
+            [42, 6, 'Condega'],
+            [43, 6, 'La Trinidad'],
+            [44, 6, 'Pueblo Nuevo'],
+            [45, 6, 'San Juan de Limay'],
+            [46, 6, 'San Nicolás'],
+            [47, 7, 'Rivas'],
+            [48, 7, 'Altagracia'],
+            [49, 7, 'Belen'],
+            [50, 7, 'Buenos Aires'],
+            [51, 7, 'Cardenas'],
+            [52, 7, 'Moyogalpa'],
+            [53, 7, 'Potosí'],
+            [54, 7, 'San Jorge'],
+            [55, 7, 'San Juan del Sur'],
+            [56, 7, 'Tola'],
+            [57, 8, 'Chinandega'],
+            [58, 8, 'Chichigalpa'],
+            [59, 8, 'Cinco Pinos'],
+            [60, 8, 'Corinto'],
+            [61, 8, 'El Realejo'],
+            [62, 8, 'El Viejo'],
+            [63, 8, 'Posoltega'],
+            [64, 8, 'Puerto Morazan'],
+            [65, 8, 'San Francisco del Norte'],
+            [66, 8, 'San Pedro del Norte'],
+            [67, 8, 'Santo Tomas del Norte'],
+            [68, 8, 'Somotillo'],
+            [69, 8, 'Villa Nueva'],
+            [70, 9, 'Juigalpa'],
+            [71, 9, 'Acoyapa'],
+            [72, 9, 'Comalapa'],
+            [73, 9, 'El Coral'],
+            [74, 9, 'La Libertad'],
+            [75, 9, 'San Francisco de Cuapa'],
+            [76, 9, 'San Pedro de Lóvago'],
+            [77, 9, 'Santo Domingo'],
+            [78, 9, 'Santo Tomás'],
+            [79, 9, 'Villa Sandino'],
+            [80, 10, 'Somoto'],
+            [81, 10, 'Las Sabanas'],
+            [82, 10, 'Palacaguina'],
+            [83, 10, 'San Jose de Cusmapa'],
+            [84, 10, 'San Juan de Rio Coco'],
+            [85, 10, 'San Lucas'],
+            [86, 10, 'Telpaneca'],
+            [87, 10, 'Totogalpa'],
+            [88, 10, 'Yalaguina'],
+            [89, 11, 'Matagalpa'],
+            [90, 11, 'Ciudad Dario'],
+            [91, 11, 'Esquipulas'],
+            [92, 11, 'Matiguás'],
+            [93, 11, 'Muy Muy'],
+            [94, 11, 'Rancho Grande'],
+            [95, 11, 'Río Blanco'],
+            [96, 11, 'San Dionisio'],
+            [97, 11, 'San Isidro'],
+            [98, 11, 'San Ramón'],
+            [99, 11, 'Sébaco'],
+            [100, 11, 'Terrabona'],
+            [101, 11, 'Tuma - La Dalia'],
+            [102, 12, 'Ocotal'],
+            [103, 12, 'Ciudad Antigua'],
+            [104, 12, 'Dipilto'],
+            [105, 12, 'El Jícaro'],
+            [106, 12, 'Jalapa'],
+            [107, 12, 'Macuelizo'],
+            [108, 12, 'Mozonte'],
+            [109, 12, 'Murra'],
+            [110, 12, 'Quilalí'],
+            [111, 12, 'San Fernando'],
+            [112, 12, 'Santa María'],
+            [113, 12, 'Wiwilí'],
+            [114, 13, 'Boaco'],
+            [115, 13, 'Camoapa'],
+            [116, 13, 'San Jose de los Remates'],
+            [117, 13, 'San Lorenzo'],
+            [118, 13, 'Santa Lucia'],
+            [119, 13, 'Teustepe'],
+            [120, 14, 'San Carlos'],
+            [121, 14, 'El Almendro'],
+            [122, 14, 'El Castillo'],
+            [123, 14, 'Morrito'],
+            [124, 14, 'San Juan del Norte'],
+            [125, 14, 'San Miguelito'],
+            [126, 15, 'Bluefields'],
+            [127, 15, 'Corn Island'],
+            [128, 15, 'Desembocadura de Río Grande'],
+            [129, 15, 'El Ayote'],
+            [130, 15, 'El Rama'],
+            [131, 15, 'El Tortuguero'],
+            [132, 15, 'Kukra Hill'],
+            [133, 15, 'La Cruz de Río Grande'],
+            [134, 15, 'Laguna de Perlas'],
+            [135, 15, 'Muelle de los Bueyes'],
+            [136, 15, 'Nueva Guinea'],
+            [137, 15, 'Paiwas'],
+            [138, 16, 'Jinotega'],
+            [139, 16, 'El Cuá'],
+            [140, 16, 'La Concordia'],
+            [141, 16, 'San José de Bocay'],
+            [142, 16, 'San Rafael del Norte'],
+            [143, 16, 'San Sebastián de Yalí'],
+            [144, 16, 'Santa María de Pantasma'],
+            [145, 16, 'Wiwilí'],
+            [146, 17, 'Puerto Cabezas'],
+            [147, 17, 'Bonanza'],
+            [148, 17, 'Mulukuku'],
+            [149, 17, 'Prinzapolka'],
+            [150, 17, 'Rosita'],
+            [151, 17, 'Siuna'],
+            [152, 17, 'Waslala'],
+            [153, 17, 'Waspán'],
+            [154, 3, 'Larreynaga'],
+            [155, 18, 'Otro'],
+            [155, 19, 'Ninguno']
+        ];
+
+        // Insert the data into the database
+
+        foreach ($departamentos as $dp){
+            $dep =  new departamentoModel();
+            $dep->nombre = $dp;
+            $dep->save();
+        }
+
+        foreach ($municipios as $muni){
+            $mun =  new departamentoMunicipioModel();
+            $mun->departamento_id = $muni[1];
+            $mun->nombre = $muni[2];
+            $mun->save();
+        }
+    }
+}

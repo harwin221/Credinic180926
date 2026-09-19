@@ -1,0 +1,83 @@
+/* Ajustes de espaciado para mejor aprovechamiento del espacio */
+
+/* Reducir padding del contenido principal */
+#main {
+  padding: 15px 15px !important;
+}
+
+@media (max-width: 1199px) {
+  #main {
+    padding: 15px !important;
+  }
+}
+
+/* Ajustar margen izquierdo del contenido principal */
+@media (min-width: 1200px) {
+  #main,
+  #footer {
+    margin-left: 280px !important;
+    transition: all 0.3s;
+  }
+}
+
+/* Cuando el sidebar está oculto, expandir el contenido */
+@media (min-width: 1200px) {
+  .toggle-sidebar #main,
+  .toggle-sidebar #footer {
+    margin-left: 0 !important;
+  }
+}
+
+/* Reducir ancho del sidebar */
+.sidebar {
+  width: 280px !important;
+}
+
+@media (max-width: 1199px) {
+  .sidebar {
+    left: -280px !important;
+  }
+}
+
+/* Ajustar el header para mejor uso del espacio */
+.header {
+  padding-left: 10px !important;
+}
+
+/* Mover el logo más a la izquierda */
+.logo {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+@media (min-width: 1200px) {
+  .logo {
+    width: 260px !important;
+  }
+}
+
+/* Mover el botón hamburguesa más a la izquierda */
+.header .toggle-sidebar-btn {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+/* Reducir padding de las tarjetas */
+.card-body {
+  padding: 15px !important;
+}
+
+/* Ajustar el padding del sidebar */
+.sidebar {
+  padding: 15px !important;
+}
+
+/* Reducir espacios en las secciones */
+.section.dashboard {
+  padding: 0 !important;
+}
+
+/* Ajustar márgenes de las tarjetas */
+.card {
+  margin-bottom: 20px !important;
+}

@@ -1,0 +1,335 @@
+/* ========================================
+   ESTILOS RESPONSIVOS PARA MÓVIL
+   CrediNica - Sistema de Préstamos
+======================================== */
+
+/* Asegurar viewport correcto */
+html {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+}
+
+body {
+    overflow-x: hidden;
+}
+
+/* ========================================
+   Z-INDEX HIERARCHY (CRÍTICO)
+   1. Contenido normal: 1
+   2. Sidebar: 996
+   3. Header: 1040
+   4. Modal backdrop: 1050
+   5. Modal: 1055
+   6. Calculator: 1060
+======================================== */
+
+/* ========================================
+   BOTÓN HAMBURGUESA - MÁXIMA PRIORIDAD
+======================================== */
+.toggle-sidebar-btn {
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.2) !important;
+    user-select: none !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 32px !important;
+    padding: 10px !important;
+    position: relative !important;
+    z-index: 1041 !important;
+}
+
+.toggle-sidebar-btn:active {
+    opacity: 0.7;
+    background-color: rgba(0,0,0,0.05);
+    border-radius: 4px;
+}
+
+/* ========================================
+   SIDEBAR RESPONSIVO
+======================================== */
+.sidebar {
+    z-index: 996 !important; /* SIEMPRE debajo de modales */
+}
+
+@media (max-width: 1199px) {
+    .sidebar {
+        position: fixed;
+        top: 60px;
+        left: -300px;
+        width: 300px;
+        height: calc(100vh - 60px);
+        overflow-y: auto;
+        transition: left 0.3s ease;
+        z-index: 996 !important;
+        background: #fff;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        pointer-events: auto !important;
+    }
+
+    body.toggle-sidebar .sidebar {
+        left: 0 !important;
+    }
+}
+
+/* ========================================
+   HEADER RESPONSIVO
+======================================== */
+.header {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 1040 !important;
+    background: #fff !important;
+    pointer-events: auto !important;
+    height: 60px !important;
+}
+
+.header .logo {
+    pointer-events: auto !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.header .logo img {
+    max-height: 40px !important;
+}
+
+@media (max-width: 991px) {
+    .header {
+        z-index: 1040 !important;
+        height: 60px !important;
+    }
+    
+    .header .logo img {
+        max-width: 80px !important;
+        max-height: 35px !important;
+        height: auto !important;
+    }
+}
+
+/* ========================================
+   CONTENIDO PRINCIPAL RESPONSIVO
+======================================== */
+#main {
+    margin-top: 60px;
+    position: relative;
+    z-index: 1;
+}
+
+@media (max-width: 991px) {
+    #main {
+        padding: 10px;
+    }
+    
+    .card, .stat-card, .small-box, .table-responsive {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .stat-card-body::before,
+    .stat-card-body::after,
+    .card::before,
+    .card::after {
+        pointer-events: none !important;
+        z-index: 0 !important;
+    }
+}
+
+/* ========================================
+   MODALES - Z-INDEX (sobre el sidebar)
+======================================== */
+.modal-backdrop { z-index: 1050 !important; }
+.modal          { z-index: 1055 !important; touch-action: auto !important; }
+.modal-dialog   { z-index: 1056 !important; }
+.modal-content  { z-index: 1057 !important; pointer-events: auto !important; touch-action: auto !important; }
+
+/* Calculadora */
+#calc              { z-index: 1060 !important; }
+#calc .modal-dialog  { z-index: 1061 !important; }
+#calc .modal-content { z-index: 1062 !important; }
+
+@media (max-width: 991px) {
+    .modal-dialog {
+        margin: 2rem 10px !important;
+        max-width: calc(100% - 20px);
+    }
+    .modal-body { padding: 15px; }
+}
+
+/* ========================================
+   TABLAS RESPONSIVAS
+======================================== */
+.table-responsive {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+}
+
+@media (max-width: 991px) {
+    .table {
+        font-size: 0.875rem;
+    }
+
+    .table th,
+    .table td {
+        padding: 0.5rem;
+        white-space: nowrap;
+    }
+}
+
+/* ========================================
+   CARDS RESPONSIVOS
+======================================== */
+@media (max-width: 991px) {
+    .card-body {
+        padding: 15px;
+    }
+}
+
+/* ========================================
+   FORMULARIOS RESPONSIVOS
+======================================== */
+@media (max-width: 991px) {
+    .form-control,
+    .form-select {
+        font-size: 16px;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+}
+
+/* ========================================
+   GRID RESPONSIVO
+======================================== */
+@media (max-width: 991px) {
+    .row > [class*=''col-''] {
+        margin-bottom: 15px;
+    }
+}
+
+/* ========================================
+   STAT CARDS RESPONSIVOS
+======================================== */
+@media (max-width: 991px) {
+    .stat-card {
+        margin-bottom: 15px;
+    }
+
+    .stat-number {
+        font-size: 24px !important;
+    }
+
+    .stat-title {
+        font-size: 12px !important;
+    }
+
+    .stat-icon {
+        font-size: 30px !important;
+    }
+}
+
+/* ========================================
+   BOTONES RESPONSIVOS
+======================================== */
+@media (max-width: 991px) {
+    .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .btn-group .btn {
+        flex: 1 1 auto;
+        min-width: 100px;
+    }
+}
+
+/* ========================================
+   FOOTER RESPONSIVO
+======================================== */
+@media (max-width: 991px) {
+    .footer {
+        padding: 15px 0;
+        font-size: 0.875rem;
+    }
+}
+
+/* ========================================
+   FIX PARA CALCULADORA
+======================================== */
+.calculator-inline,
+.calculator-inline * {
+    pointer-events: auto !important;
+    touch-action: auto !important;
+}
+
+.calculator-row button {
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.2);
+}
+
+.calculator-row button:active {
+    opacity: 0.8;
+    transform: scale(0.95);
+}
+
+/* ========================================
+   MODALES - SCROLL INTERNO + HEADER/FOOTER VISIBLES
+   Aplica solo a modales con clase modal-dialog-scrollable.
+   header y footer: flex-shrink:0 = siempre visibles.
+   body: flex:1 + overflow-y:auto = scroll interno.
+   modal-content: max-height limita al viewport.
+======================================== */
+.modal-dialog-scrollable .modal-content {
+    max-height: calc(100vh - 3.5rem) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+.modal-dialog-scrollable .modal-header {
+    flex: 0 0 auto !important;
+}
+
+.modal-dialog-scrollable .modal-footer {
+    flex: 0 0 auto !important;
+}
+
+.modal-dialog-scrollable .modal-body {
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* modal-xl sin centered: margen fijo arriba/abajo */
+.modal-xl.modal-dialog-scrollable {
+    margin: 1.75rem auto !important;
+}
+
+/* modal centrado: alinear al centro del viewport restante */
+.modal-dialog-centered.modal-dialog-scrollable {
+    min-height: calc(100% - 3.5rem) !important;
+}
+
+/* Móvil */
+@media (max-width: 767.98px) {
+    .modal-dialog-scrollable .modal-content {
+        max-height: calc(100vh - 1rem) !important;
+    }
+    .modal-xl, .modal-lg {
+        max-width: calc(100vw - 1rem) !important;
+    }
+}
+
