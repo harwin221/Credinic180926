@@ -35,5 +35,6 @@ export const API_ENDPOINTS = {
     disburse_credit: `${API_BASE_URL}/api/mobile/disburse-credit`,
     deny_disbursement: `${API_BASE_URL}/api/mobile/deny-disbursement`,
     mobile_receipt: `${API_BASE_URL}/api/mobile/receipt`,
+    mobile_recibo: `${API_BASE_URL}/api/mobile/recibo`,
     change_password: `${API_BASE_URL}/api/users/change-password`,
 };

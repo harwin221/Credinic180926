@@ -67,7 +67,7 @@ class MobileApiController extends Controller
     {
         $agente = $request->user();
 
-        $prestamos = prestamosModel::with(['cliente', 'cuotas'])
+        $prestamos = prestamosModel::with(['cliente', 'cuotas', 'abonos' => function($q) { $q->where('estado', 1)->orderBy('id', 'desc'); }])
             ->where('agente_id', $agente->id)
             ->whereNull('fecha_clasificacion')
             ->where('estado', 1)
@@ -110,6 +110,15 @@ class MobileApiController extends Controller
                 ];
             })->values()->toArray();
 
+            $hoy = now()->toDateString();
+            $abonosHoy = $prestamo->abonos->filter(function($a) use ($hoy) {
+                return $a->estado == 1 && substr($a->fecha_abono, 0, 10) === $hoy;
+            });
+            $montoCobradoHoy = $abonosHoy->sum(function($a) {
+                return (float)$a->total_abonado;
+            });
+            $ultimoAbonoHoy = $abonosHoy->first();
+
             $clientesMap[$cid]['prestamos'][] = [
                 'id'              => $prestamo->id,
                 'id_enc'          => $prestamo->id_enc,
@@ -122,6 +131,9 @@ class MobileApiController extends Controller
                 'agente_id'       => $prestamo->agente_id,
                 'es_externo'      => false,
                 'cuotas'          => $cuotas,
+                'cobrado_hoy'     => $montoCobradoHoy,
+                'ultimo_abono_id' => $ultimoAbonoHoy ? $ultimoAbonoHoy->id : null,
+                'tiene_abono_hoy' => $montoCobradoHoy > 0,
             ];
 
             $clientesMap[$cid]['totalPendiente'] += (float)$prestamo->pendiente_abono;
@@ -361,5 +373,183 @@ class MobileApiController extends Controller
             }
         }
         return 'AL_DIA';
+    }
+
+
+    // ─── POST /api/mobile/recibo ──────────────────────────────────────────────
+    public function recibo(Request $request)
+    {
+        $abonoId = $request->abono_id ?? $request->paymentId;
+        $prestamoId = $request->prestamo_id ?? $request->creditId;
+
+        $abono = null;
+        if ($abonoId) {
+            $abono = abonosModel::with(['prestamo.cliente', 'prestamo.cuotas', 'user_create', 'abono_detalle'])
+                ->where('id', $abonoId)
+                ->first();
+        } elseif ($prestamoId) {
+            $abono = abonosModel::with(['prestamo.cliente', 'prestamo.cuotas', 'user_create', 'abono_detalle'])
+                ->where('prestamo_id', $prestamoId)
+                ->where('estado', 1)
+                ->orderBy('id', 'desc')
+                ->first();
+        }
+
+        if (!$abono) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se encontró el recibo o abono solicitado',
+            ], 404);
+        }
+
+        $receiptData = $this->calcularDatosRecibo($abono);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $receiptData,
+        ]);
+    }
+
+    // ─── GET /api/mobile/recibo/{id} ──────────────────────────────────────────
+    public function reciboPorId($id)
+    {
+        $abono = abonosModel::with(['prestamo.cliente', 'prestamo.cuotas', 'user_create', 'abono_detalle'])
+            ->where('id', $id)
+            ->first();
+
+        if (!$abono) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Recibo no encontrado',
+            ], 404);
+        }
+
+        $receiptData = $this->calcularDatosRecibo($abono);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $receiptData,
+        ]);
+    }
+
+    // ─── Calcular datos de recibo (lógica idéntica a recibo.blade.php) ────────
+    private function calcularDatosRecibo(abonosModel $abono): array
+    {
+        $fechaAbono = \Carbon\Carbon::parse($abono->fecha_abono ?? $abono->created_at)->startOfDay();
+        $fechaReferencia = $fechaAbono;
+
+        $montoCuotaDia = 0;
+        $montoAtraso = 0;
+
+        // 1. Cuota del día: cuotas cuya fecha coincide con el día del abono
+        $cuotasDelDia = $abono->prestamo->cuotas->filter(function($cuota) use ($fechaReferencia) {
+            return \Carbon\Carbon::parse($cuota->fecha_cuota)->startOfDay()->equalTo($fechaReferencia);
+        });
+
+        foreach ($cuotasDelDia as $cuota) {
+            $abonadoAntes = DB::table('prestamo_cuota_abono as PCA')
+                ->join('abonos as A', 'A.id', 'PCA.abono_id')
+                ->where('PCA.prestamo_cuota_id', $cuota->id)
+                ->where('A.id', '<', $abono->id)
+                ->where('PCA.estado', 1)
+                ->where('A.estado', 1)
+                ->sum('PCA.monto_abono');
+
+            $pendiente = (float)$cuota->monto_cuota - (float)$abonadoAntes;
+            if ($pendiente > 0) {
+                $montoCuotaDia += $pendiente;
+            }
+        }
+
+        // 2. Mora / Atraso: cuotas anteriores a la fecha del abono
+        $cuotasVencidas = $abono->prestamo->cuotas->filter(function($cuota) use ($fechaReferencia) {
+            return \Carbon\Carbon::parse($cuota->fecha_cuota)->startOfDay()->lt($fechaReferencia);
+        });
+
+        foreach ($cuotasVencidas as $cuota) {
+            $abonadoAntes = DB::table('prestamo_cuota_abono as PCA')
+                ->join('abonos as A', 'A.id', 'PCA.abono_id')
+                ->where('PCA.prestamo_cuota_id', $cuota->id)
+                ->where('A.id', '<', $abono->id)
+                ->where('PCA.estado', 1)
+                ->where('A.estado', 1)
+                ->sum('PCA.monto_abono');
+
+            $pendiente = (float)$cuota->monto_cuota - (float)$abonadoAntes;
+            if ($pendiente > 0) {
+                $montoAtraso += $pendiente;
+            }
+        }
+
+        // 3. Días de mora desde la cuota más antigua vencida
+        $cuotaMasAntigua = $cuotasVencidas->filter(function($cuota) use ($abono) {
+            $abonadoAntes = DB::table('prestamo_cuota_abono as PCA')
+                ->join('abonos as A', 'A.id', 'PCA.abono_id')
+                ->where('PCA.prestamo_cuota_id', $cuota->id)
+                ->where('A.id', '<', $abono->id)
+                ->where('PCA.estado', 1)
+                ->where('A.estado', 1)
+                ->sum('PCA.monto_abono');
+
+            return (float)$abonadoAntes < (float)$cuota->monto_cuota;
+        })->sortBy('fecha_cuota')->first();
+
+        $diasMora = $cuotaMasAntigua ? (int)$fechaReferencia->diffInDays(\Carbon\Carbon::parse($cuotaMasAntigua->fecha_cuota)) : 0;
+        $totalAPagar = $montoCuotaDia + $montoAtraso;
+
+        // 4. Saldo anterior y saldo nuevo
+        $abonadoHastaAntesDeEste = DB::table('prestamos')
+            ->join('prestamo_coutas as PC', 'PC.prestamo_id', 'prestamos.id')
+            ->join('prestamo_cuota_abono as PCA', 'PCA.prestamo_cuota_id', 'PC.id')
+            ->join('abonos as A', 'A.id', 'PCA.abono_id')
+            ->where('prestamos.id', $abono->prestamo_id)
+            ->where('PCA.estado', 1)
+            ->where('A.estado', 1)
+            ->where('A.id', '<', $abono->id)
+            ->sum('PCA.monto_abono');
+
+        $abonadoHastaEsteAbono = DB::table('prestamos')
+            ->join('prestamo_coutas as PC', 'PC.prestamo_id', 'prestamos.id')
+            ->join('prestamo_cuota_abono as PCA', 'PCA.prestamo_cuota_id', 'PC.id')
+            ->join('abonos as A', 'A.id', 'PCA.abono_id')
+            ->where('prestamos.id', $abono->prestamo_id)
+            ->where('PCA.estado', 1)
+            ->where('A.estado', 1)
+            ->where('A.id', '<=', $abono->id)
+            ->sum('PCA.monto_abono');
+
+        $sumaCuotas = (float)($abono->prestamo->suma_cuotas ?? $abono->prestamo->cuotas->sum('monto_cuota'));
+        $saldoAnterior = max(0, $sumaCuotas - (float)$abonadoHastaAntesDeEste);
+        $nuevoSaldo    = max(0, $sumaCuotas - (float)$abonadoHastaEsteAbono);
+
+        $cliente = $abono->prestamo->cliente;
+        $usuario = $abono->user_create ?? Auth::user();
+        $sucursalNombre = ($cliente && $cliente->sucursal) ? $cliente->sucursal->nombre : 'PRINCIPAL';
+
+        $totalAbonado = (float)$abono->total_abonado;
+        if ($totalAbonado <= 0 && $abono->total_efectivo > 0) {
+            $totalAbonado = (float)$abono->total_efectivo;
+        }
+
+        return [
+            'transactionNumber' => 'REC-' . str_pad($abono->id, 6, '0', STR_PAD_LEFT),
+            'creditNumber'      => (string)($abono->prestamo->consecutivo ?? $abono->prestamo->id),
+            'clientName'        => $cliente ? ($cliente->full_name ?? trim($cliente->nombres . ' ' . $cliente->apellidos)) : 'CLIENTE',
+            'clientCode'        => $cliente ? ($cliente->cedula ?? (string)$cliente->id) : '',
+            'paymentDate'       => \Carbon\Carbon::parse($abono->created_at)->format('d/m/Y h:i A'),
+            'cuotaDelDia'       => round($montoCuotaDia, 2),
+            'montoAtrasado'     => round($montoAtraso, 2),
+            'diasMora'          => $diasMora,
+            'totalAPagar'       => round($totalAPagar, 2),
+            'montoCancelacion'  => round($saldoAnterior, 2),
+            'amountPaid'        => round($totalAbonado, 2),
+            'saldoAnterior'     => round($saldoAnterior, 2),
+            'nuevoSaldo'        => round($nuevoSaldo, 2),
+            'managedBy'         => $usuario ? ($usuario->full_name ?? $usuario->name) : 'AGENTE',
+            'sucursal'          => $sucursalNombre,
+            'role'              => 'AGENTE DE COBRO',
+            'abono_id'          => $abono->id,
+            'prestamo_id'       => $abono->prestamo_id,
+        ];
     }
 }

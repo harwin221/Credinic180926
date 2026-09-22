@@ -26,6 +26,7 @@ interface CreditItem {
     remainingBalance: number;
     collectionsManager: string;
     cuotaNumero: number;
+    ultimoAbonoId?: number | null;
     // Montos calculados
     details: {
         dueTodayAmount: number;
@@ -43,6 +44,7 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
     const overdue:   CreditItem[] = []; // Clientes en Mora
     const expired:   CreditItem[] = []; // Préstamos Vencidos
     const upToDate:  CreditItem[] = []; // Al Día
+    const paidToday: CreditItem[] = []; // Cobrado Hoy
 
     for (const cliente of clientes) {
         const prestamos: any[] = cliente.prestamos || [];
@@ -89,6 +91,7 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
                 a.fecha_cuota.localeCompare(b.fecha_cuota)
             )[0];
 
+            const cobradoHoyMonto = parseFloat(prestamo.cobrado_hoy || 0);
             const item: CreditItem = {
                 id:                  prestamo.id,
                 id_enc:              prestamo.id_enc,
@@ -100,15 +103,21 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
                 remainingBalance:    parseFloat(prestamo.pendiente_abono) || 0,
                 collectionsManager:  agenteName,
                 cuotaNumero:         cuotaHoyObj?.numero_cuota ?? cuotaVencObj?.numero_cuota ?? 0,
+                ultimoAbonoId:       prestamo.ultimo_abono_id || null,
                 details: {
                     dueTodayAmount,
                     overdueAmount,
                     remainingBalance: parseFloat(prestamo.pendiente_abono) || 0,
                     lateDays,
                     diasVencido: Math.max(0, diasVencido),
-                    paidToday: 0,
+                    paidToday: cobradoHoyMonto,
                 },
             };
+
+            // Si tiene cobro hoy, incluirlo en la pestaña Cobrado Hoy
+            if (cobradoHoyMonto > 0 || prestamo.tiene_abono_hoy) {
+                paidToday.push(item);
+            }
 
             // ── Clasificar — misma lógica que el controlador web ─────────────
             // PESTAÑA 1 — Cuotas del Día: tiene cuota HOY (independiente de mora)
@@ -137,8 +146,9 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
     expired.sort((a, b) => a.details.diasVencido - b.details.diasVencido);
     // Cobro Día: ordenar por nombre del cliente (igual que web: orderBy nombres asc)
     dueToday.sort((a, b) => a.clientName.localeCompare(b.clientName));
+    paidToday.sort((a, b) => a.clientName.localeCompare(b.clientName));
 
-    return { dueToday, overdue, expired, upToDate };
+    return { dueToday, overdue, expired, upToDate, paidToday };
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -182,6 +192,8 @@ export default function CreditsScreen() {
     const [receiptData, setReceiptData]           = useState<ReceiptData | null>(null);
     const [isReceiptVisible, setIsReceiptVisible] = useState(false);
     const [searchResults, setSearchResults]       = useState<CreditItem[]>([]);
+    const [expandedCreditId, setExpandedCreditId] = useState<number | null>(null);
+    const [isReprinting, setIsReprinting]         = useState(false);
 
     // Referencia interna a todos los préstamos (para búsqueda local)
     const [allItems, setAllItems] = useState<CreditItem[]>([]);
@@ -205,18 +217,25 @@ export default function CreditsScreen() {
                 const hoy      = new Date().toISOString().split('T')[0];
                 const clientes = result.clientes || [];
 
-                const { dueToday, overdue, expired, upToDate } =
+                const { dueToday, overdue, expired, upToDate, paidToday: classifiedPaidToday } =
                     clasificarPortfolio(clientes, hoy, session.fullName);
 
-                // paidToday: préstamos de cualquier categoría que tienen abono registrado hoy
-                // (lo detectaremos al momento del pago exitoso moviendo el item)
-                setPortfolio(prev => ({
-                    dueToday,
-                    overdue,
-                    expired,
-                    upToDate,
-                    paidToday: prev.paidToday, // conservar hasta que se refresque
-                }));
+                setPortfolio(prev => {
+                    // Combinar los recibidos del servidor con los pagados localmente sin duplicar
+                    const mergedPaid = [...classifiedPaidToday];
+                    for (const localPaid of prev.paidToday) {
+                        if (!mergedPaid.some(m => m.id === localPaid.id)) {
+                            mergedPaid.push(localPaid);
+                        }
+                    }
+                    return {
+                        dueToday,
+                        overdue,
+                        expired,
+                        upToDate,
+                        paidToday: mergedPaid,
+                    };
+                });
 
                 // Índice plano para búsqueda local
                 setAllItems([...dueToday, ...overdue, ...expired, ...upToDate]);
@@ -253,6 +272,59 @@ export default function CreditsScreen() {
             )
         );
     }, [searchQuery, isSearchActive, allItems]);
+
+
+    // ─── Reimprimir Recibo (lógica idéntica al botón reimprimir de la web) ──────
+    const handleReprint = async (item: CreditItem) => {
+        setIsReprinting(true);
+        try {
+            const session = await sessionService.getSession();
+            const endpoint = (API_ENDPOINTS as any).mobile_recibo || `${API_ENDPOINTS.base}/api/mobile/recibo`;
+            
+            const response = await apiFetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    abono_id: item.ultimoAbonoId || null,
+                    prestamo_id: item.id,
+                }),
+            });
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                setReceiptData(result.data);
+                setIsReceiptVisible(true);
+            } else {
+                // Fallback con datos calculados locales si no se pudo conectar al endpoint específico
+                const detail = item.details;
+                const now = new Date().toLocaleString('es-NI');
+                setReceiptData({
+                    transactionNumber: item.ultimoAbonoId ? `REC-${String(item.ultimoAbonoId).padStart(6, '0')}` : 'REC-REIMPRESION',
+                    creditNumber: item.creditNumber || item.id,
+                    clientName: item.clientName,
+                    clientCode: item.clientCode,
+                    paymentDate: now,
+                    cuotaDelDia: detail.dueTodayAmount,
+                    montoAtrasado: detail.overdueAmount,
+                    diasMora: detail.lateDays,
+                    totalAPagar: detail.dueTodayAmount + detail.overdueAmount,
+                    montoCancelacion: detail.remainingBalance,
+                    amountPaid: detail.paidToday || detail.dueTodayAmount,
+                    saldoAnterior: detail.remainingBalance + (detail.paidToday || 0),
+                    nuevoSaldo: detail.remainingBalance,
+                    managedBy: session?.fullName || 'AGENTE',
+                    sucursal: session?.sucursalName || 'SUCURSAL',
+                    role: session?.role || 'AGENTE DE COBRO',
+                });
+                setIsReceiptVisible(true);
+            }
+        } catch (error) {
+            console.error('[REIMPRIMIR] Error:', error);
+            AlertHelper.alert('Error', 'No se pudo conectar con el servidor para reimprimir');
+        } finally {
+            setIsReprinting(false);
+        }
+    };
 
     // ─── Seleccionar crédito para pago ────────────────────────────────────────
     const handleSelectCredit = (item: CreditItem) => {
@@ -340,6 +412,7 @@ export default function CreditsScreen() {
                 // Mover el item a "Cobrado Hoy" y quitarlo de su pestaña original
                 const paid = {
                     ...selectedCredit,
+                    ultimoAbonoId: result.abono_id || null,
                     details: {
                         ...selectedCredit.details,
                         paidToday: paymentData.amount,
@@ -491,7 +564,17 @@ export default function CreditsScreen() {
                                 index={index}
                                 tabColor={TAB_COLOR[activeTab]}
                                 activeTab={activeTab}
-                                onPress={() => handleSelectCredit(item)}
+                                isExpanded={activeTab === 'Cobrado Hoy' && expandedCreditId === item.id}
+                                onToggleExpand={() => {
+                                    if (activeTab === 'Cobrado Hoy') {
+                                        setExpandedCreditId(expandedCreditId === item.id ? null : item.id);
+                                    } else {
+                                        handleSelectCredit(item);
+                                    }
+                                }}
+                                onApplyPayment={() => handleSelectCredit(item)}
+                                onReprint={() => handleReprint(item)}
+                                isReprinting={isReprinting}
                             />
                         ))
                     )}
@@ -526,13 +609,18 @@ export default function CreditsScreen() {
 
 // ─── Tarjeta de crédito ───────────────────────────────────────────────────────
 function CreditCard({
-    item, index, tabColor, activeTab, onPress,
+    item, index, tabColor, activeTab,
+    isExpanded, onToggleExpand, onApplyPayment, onReprint, isReprinting,
 }: {
     item: CreditItem;
     index: number;
     tabColor: string;
     activeTab: TabKey;
-    onPress: () => void;
+    isExpanded?: boolean;
+    onToggleExpand: () => void;
+    onApplyPayment?: () => void;
+    onReprint?: () => void;
+    isReprinting?: boolean;
 }) {
     const detail = item.details;
 
@@ -579,7 +667,7 @@ function CreditCard({
                 return (
                     <View style={styles.rowInfo}>
                         <Text style={styles.infoLabel}>
-                            Cobrado:{' '}
+                            Cobrado hoy:{' '}
                             <Text style={[styles.infoValue, { color: '#10b981' }]}>
                                 C$ {fmt(detail.paidToday)}
                             </Text>
@@ -592,39 +680,79 @@ function CreditCard({
     };
 
     return (
-        <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
-            {/* Avatar numérico */}
-            <View style={[styles.avatar, { backgroundColor: tabColor }]}>
-                {index >= 0
-                    ? <Text style={styles.avatarText}>{index + 1}</Text>
-                    : <MaterialCommunityIcons name="account" size={18} color="#fff" />
-                }
-            </View>
+        <View style={styles.cardContainer}>
+            <TouchableOpacity 
+                style={styles.card} 
+                onPress={onToggleExpand} 
+                activeOpacity={0.75}
+            >
+                {/* Avatar numérico */}
+                <View style={[styles.avatar, { backgroundColor: tabColor }]}>
+                    {index >= 0
+                        ? <Text style={styles.avatarText}>{index + 1}</Text>
+                        : <MaterialCommunityIcons name="account" size={18} color="#fff" />
+                    }
+                </View>
 
-            <View style={styles.cardBody}>
-                {/* Nombre cliente */}
-                <Text style={styles.clientName} numberOfLines={1}>{item.clientName}</Text>
+                <View style={styles.cardBody}>
+                    {/* Nombre cliente */}
+                    <Text style={styles.clientName} numberOfLines={1}>{item.clientName}</Text>
 
-                {/* Dirección (igual que la web) */}
-                {!!item.clientAddress && (
-                    <Text style={styles.clientAddress} numberOfLines={1}>{item.clientAddress}</Text>
-                )}
+                    {/* Dirección (igual que la web) */}
+                    {!!item.clientAddress && (
+                        <Text style={styles.clientAddress} numberOfLines={1}>{item.clientAddress}</Text>
+                    )}
 
-                {/* Subtítulo por pestaña */}
-                {renderSubtitle()}
+                    {/* Subtítulo por pestaña */}
+                    {renderSubtitle()}
 
-                {/* Saldo pendiente */}
-                <Text style={styles.infoLabel}>
-                    Saldo:{' '}
-                    <Text style={[styles.infoValue, { color: '#e11d48' }]}>
-                        C$ {fmt(detail.remainingBalance)}
+                    {/* Saldo pendiente */}
+                    <Text style={styles.infoLabel}>
+                        Saldo:{' '}
+                        <Text style={[styles.infoValue, { color: '#e11d48' }]}>
+                            C$ {fmt(detail.remainingBalance)}
+                        </Text>
                     </Text>
-                </Text>
-            </View>
+                </View>
 
-            {/* Ícono de acción */}
-            <MaterialCommunityIcons name="chevron-right" size={22} color="#cbd5e1" />
-        </TouchableOpacity>
+                {/* Ícono de acción */}
+                <MaterialCommunityIcons 
+                    name={activeTab === 'Cobrado Hoy' ? (isExpanded ? 'chevron-up' : 'chevron-down') : 'chevron-right'} 
+                    size={22} 
+                    color={activeTab === 'Cobrado Hoy' && isExpanded ? '#0ea5e9' : '#cbd5e1'} 
+                />
+            </TouchableOpacity>
+
+            {/* Opciones desplegables debajo del cliente al seleccionarlo en "Cobrado Hoy" */}
+            {activeTab === 'Cobrado Hoy' && isExpanded && (
+                <View style={styles.actionsRow}>
+                    <TouchableOpacity 
+                        style={[styles.actionBtn, styles.btnPay]}
+                        onPress={onApplyPayment}
+                        activeOpacity={0.8}
+                    >
+                        <MaterialCommunityIcons name="cash-plus" size={18} color="#fff" />
+                        <Text style={styles.actionBtnText}>Aplicar Pago</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={[styles.actionBtn, styles.btnReprint]}
+                        onPress={onReprint}
+                        activeOpacity={0.8}
+                        disabled={isReprinting}
+                    >
+                        {isReprinting ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                            <>
+                                <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                                <Text style={styles.actionBtnText}>Reimprimir</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            )}
+        </View>
     );
 }
 
@@ -672,6 +800,46 @@ const styles = StyleSheet.create({
     emptyText: { textAlign: 'center', color: '#94a3b8', fontSize: 14, marginTop: 8 },
 
     // Tarjeta
+    cardContainer: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#f1f5f9',
+        paddingVertical: 4,
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        gap: 10,
+        paddingHorizontal: 48,
+        paddingVertical: 10,
+        backgroundColor: '#f8fafc',
+        borderRadius: 10,
+        marginBottom: 8,
+    },
+    actionBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        gap: 6,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    btnPay: {
+        backgroundColor: '#10b981',
+    },
+    btnReprint: {
+        backgroundColor: '#f59e0b',
+    },
+    actionBtnText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
+    },
     card: {
         flexDirection: 'row',
         alignItems: 'center',
