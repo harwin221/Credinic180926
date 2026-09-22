@@ -1,3 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const COBRADOS_HOY_KEY = '@credinic_cobrados_hoy_';
+const getTodayKey = () => `${COBRADOS_HOY_KEY}${new Date().toLocaleDateString('en-CA')}`;
 import {
     View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
     ScrollView, TextInput, RefreshControl, ActivityIndicator,
@@ -220,14 +224,32 @@ export default function CreditsScreen() {
                 const { dueToday, overdue, expired, upToDate, paidToday: classifiedPaidToday } =
                     clasificarPortfolio(clientes, hoy, session.fullName);
 
+                // Cargar también cobrados guardados en almacenamiento local del teléfono hoy
+                let localSavedPaid: CreditItem[] = [];
+                try {
+                    const savedStr = await AsyncStorage.getItem(getTodayKey());
+                    if (savedStr) {
+                        localSavedPaid = JSON.parse(savedStr);
+                    }
+                } catch (e) {
+                    console.error('[STORAGE] Error leyendo cobrados hoy:', e);
+                }
+
                 setPortfolio(prev => {
-                    // Combinar los recibidos del servidor con los pagados localmente sin duplicar
                     const mergedPaid = [...classifiedPaidToday];
+                    // Agregar los de AsyncStorage
+                    for (const item of localSavedPaid) {
+                        if (!mergedPaid.some(m => m.id === item.id)) {
+                            mergedPaid.push(item);
+                        }
+                    }
+                    // Agregar los del estado previo
                     for (const localPaid of prev.paidToday) {
                         if (!mergedPaid.some(m => m.id === localPaid.id)) {
                             mergedPaid.push(localPaid);
                         }
                     }
+                    mergedPaid.sort((a, b) => a.clientName.localeCompare(b.clientName));
                     return {
                         dueToday,
                         overdue,
@@ -252,8 +274,6 @@ export default function CreditsScreen() {
 
     const onRefresh = () => {
         setRefreshing(true);
-        // Al refrescar limpiamos cobrado hoy también
-        setPortfolio(p => ({ ...p, paidToday: [] }));
         fetchPortfolio();
     };
 
