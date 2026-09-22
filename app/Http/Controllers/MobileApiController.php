@@ -324,45 +324,130 @@ class MobileApiController extends Controller
     }
 
     // ─── GET /api/mobile/dashboard ────────────────────────────────────────────
+    // ─── GET /api/mobile/dashboard (Recaudo del Día - Misma lógica exacta que la web) ───────
     public function dashboard(Request $request)
     {
         $agente = $request->user();
-        $hoy    = now()->toDateString();
+        $hoy = \Carbon\Carbon::today()->toDateString();
 
-        $abonos = abonosModel::with(['prestamo'])
-            ->whereHas('prestamo', function ($q) use ($agente) {
-                $q->where('agente_id', $agente->id);
+        // Abonos del agente logueado registrados HOY
+        $abonosHoy = DB::table('abonos as a')
+            ->join('prestamos as p', 'p.id', '=', 'a.prestamo_id')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            // Totales del abono (capital + interes + mora + total)
+            ->leftJoin(DB::raw('(SELECT abono_id,
+                                    SUM(total_capital) as capital,
+                                    SUM(total_interes) as interes,
+                                    SUM(total_mora)    as mora,
+                                    SUM(monto_abono)   as total
+                                FROM prestamo_cuota_abono
+                                WHERE estado = 1
+                                GROUP BY abono_id) as t_pca'), 'a.id', '=', 't_pca.abono_id')
+            // Fecha de la cuota más antigua aplicada -> clasifica el tipo de cobro
+            ->leftJoin(DB::raw('(SELECT pca.abono_id, MIN(pc.fecha_cuota) as fecha_cuota_min
+                                FROM prestamo_cuota_abono pca
+                                JOIN prestamo_coutas pc ON pc.id = pca.prestamo_cuota_id
+                                WHERE pca.estado = 1
+                                GROUP BY pca.abono_id) as t_fc'), 'a.id', '=', 't_fc.abono_id')
+            // Detectar préstamos vencidos: sin cuotas futuras pendientes Y con saldo pendiente
+            ->leftJoin(DB::raw('(SELECT prestamo_id,
+                                    COUNT(*) as cuotas_futuras_pend
+                                FROM prestamo_coutas
+                                WHERE fecha_cuota >= CURDATE()
+                                  AND estado IN (1,2)
+                                GROUP BY prestamo_id) as t_fut'), 'p.id', '=', 't_fut.prestamo_id')
+            ->leftJoin(DB::raw('(SELECT pc2.prestamo_id,
+                                    SUM(pc2.monto_cuota) as total_cuotas,
+                                    COALESCE((SELECT SUM(pca2.monto_abono)
+                                              FROM prestamo_cuota_abono pca2
+                                              JOIN prestamo_coutas pc3 ON pc3.id = pca2.prestamo_cuota_id
+                                              WHERE pc3.prestamo_id = pc2.prestamo_id
+                                                AND pca2.estado = 1), 0) as total_abonado_prest
+                                FROM prestamo_coutas pc2
+                                GROUP BY pc2.prestamo_id) as t_saldo'), 'p.id', '=', 't_saldo.prestamo_id')
+            ->where('a.created_user_id', $agente->id)
+            ->where('a.estado', 1)
+            ->where(function($dateQ) use ($hoy) {
+                $dateQ->whereDate('a.fecha_abono', $hoy)
+                      ->orWhereDate('a.created_at', $hoy);
             })
-            ->whereDate('fecha_abono', $hoy)
-            ->where('estado', 1)
+            ->select(
+                'a.id', 'a.prestamo_id', 'a.fecha_abono', 'a.tipo_abono', 'a.total_transferencia',
+                'p.estado as prestamo_estado',
+                'p.user_id as cliente_id',
+                DB::raw("CONCAT(u.nombres, ' ', u.apellidos) as cliente_nombre"),
+                't_pca.capital  as total_abonado_capital',
+                't_pca.interes  as total_abonado_interes',
+                't_pca.mora     as total_abonado_mora',
+                't_pca.total    as total_abonado',
+                't_fc.fecha_cuota_min',
+                DB::raw('COALESCE(t_fut.cuotas_futuras_pend, 0) as cuotas_futuras_pend'),
+                DB::raw('COALESCE(t_saldo.total_cuotas, 0) - COALESCE(t_saldo.total_abonado_prest, 0) as saldo_pendiente_prest')
+            )
             ->get();
 
-        $totalRecuperado = 0;
-        $diaRecaudado    = 0;
-        $moraRecaudada   = 0;
-        $clientesIds     = [];
+        // Clasificación idéntica a la vista web de recaudo
+        $resumen = [
+            'total_recuperado'    => 0,
+            'total_transferencia' => 0,
+            'dia_recaudado'       => 0,
+            'mora_recaudada'      => 0,
+            'proximo_recaudado'   => 0,
+            'vencido_recaudado'   => 0,
+            'total_clientes'      => 0,
+        ];
 
-        foreach ($abonos as $ab) {
-            $total            = $ab->total_abonado;
-            $totalRecuperado += $total;
-            $diaRecaudado    += $total;
-            $clientesIds[$ab->prestamo->user_id ?? 0] = true;
+        $clientesUnicos = [];
+        $abonoIds = $abonosHoy->pluck('id')->toArray();
+        $detallesPorAbono = DB::table('prestamo_cuota_abono as pca')
+            ->join('prestamo_coutas as pc', 'pc.id', '=', 'pca.prestamo_cuota_id')
+            ->whereIn('pca.abono_id', $abonoIds)
+            ->where('pca.estado', 1)
+            ->select('pca.abono_id', 'pca.monto_abono', 'pc.fecha_cuota')
+            ->get()
+            ->groupBy('abono_id');
+
+        foreach ($abonosHoy as $abono) {
+            $monto = (float) ($abono->total_abonado ?? 0);
+            $clientesUnicos[$abono->cliente_id] = true;
+
+            $resumen['total_recuperado']    += $monto;
+            $resumen['total_transferencia'] += (float) ($abono->total_transferencia ?? 0);
+
+            if ($abono->prestamo_estado == 3 ||
+                ($abono->cuotas_futuras_pend == 0 && $abono->saldo_pendiente_prest > 0)) {
+                $resumen['vencido_recaudado'] += $monto;
+            } else {
+                $fechaAbono = substr($abono->fecha_abono, 0, 10);
+                $detalles   = $detallesPorAbono->get($abono->id, collect());
+
+                foreach ($detalles as $detalle) {
+                    $montoCuota  = (float) $detalle->monto_abono;
+                    $fechaCuota  = substr($detalle->fecha_cuota, 0, 10);
+
+                    if ($fechaCuota < $fechaAbono) {
+                        $resumen['mora_recaudada']    += $montoCuota;
+                    } elseif ($fechaCuota > $fechaAbono) {
+                        $resumen['proximo_recaudado'] += $montoCuota;
+                    } else {
+                        $resumen['dia_recaudado']     += $montoCuota;
+                    }
+                }
+            }
         }
 
-        $totalCartera = prestamosModel::where('agente_id', $agente->id)
-            ->whereNull('fecha_clasificacion')
-            ->where('estado', 1)
-            ->where('desembolsado', 1)
-            ->count();
+        $resumen['total_clientes'] = count($clientesUnicos);
 
         return response()->json([
-            'success'           => true,
-            'fecha'             => $hoy,
-            'total_recuperado'  => $totalRecuperado,
-            'dia_recaudado'     => $diaRecaudado,
-            'mora_recaudada'    => $moraRecaudada,
-            'clientes_cobrados' => count($clientesIds),
-            'total_cartera'     => $totalCartera,
+            'success'               => true,
+            'fecha'                 => $hoy,
+            'total_recuperado'      => round($resumen['total_recuperado'], 2),
+            'total_transferencia'   => round($resumen['total_transferencia'], 2),
+            'dia_recaudado'         => round($resumen['dia_recaudado'], 2),
+            'mora_recaudada'        => round($resumen['mora_recaudada'], 2),
+            'proximo_recaudado'     => round($resumen['proximo_recaudado'], 2),
+            'vencido_recaudado'     => round($resumen['vencido_recaudado'], 2),
+            'clientes_cobrados'     => $resumen['total_clientes'],
         ]);
     }
 
