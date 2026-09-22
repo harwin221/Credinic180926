@@ -1,4 +1,8 @@
 
+@php
+    $promedioDiasAtraso = $prestamo->promedio_dias_atraso;
+@endphp
+
 <div class="row">
     <div class="col-md-3 text-center">
         <h3>Total Pendiente: <br><strong>{{$prestamo->moneda." ". number_format( $prestamo->suma_cuotas - $prestamo->suma_abonos,2)}}</strong></h3>
@@ -15,8 +19,25 @@
     <div class="col-md-3 text-center">
         <h3>% Abonado: <br><strong>{{number_format(($prestamo->suma_abonos / $prestamo->suma_cuotas)*100,2)}}</strong></h3>
     </div>
+</div>
 
-
+{{-- Promedio días de atraso --}}
+<div class="row mt-2 mb-1">
+    <div class="col-md-12 d-flex justify-content-center">
+        <div class="input-group" style="max-width:320px;">
+            <span class="input-group-text fw-bold bg-white border-end-0">
+                <i class="fa fa-clock me-1"></i> Promedio Días Atraso:
+            </span>
+            <input type="text" disabled
+                class="form-control fw-bold text-center border-start-0
+                       {{ $promedioDiasAtraso > 5 ? 'text-danger' : ($promedioDiasAtraso > 0 ? 'text-warning' : 'text-success') }}"
+                value="{{ $promedioDiasAtraso }} días">
+            <span class="input-group-text
+                         {{ $promedioDiasAtraso > 5 ? 'bg-danger text-white' : ($promedioDiasAtraso > 0 ? 'bg-warning text-dark' : 'bg-success text-white') }}">
+                <i class="fa fa-{{ $promedioDiasAtraso > 0 ? 'exclamation-triangle' : 'check-circle' }}"></i>
+            </span>
+        </div>
+    </div>
 </div>
 <br>
 <div class="row">

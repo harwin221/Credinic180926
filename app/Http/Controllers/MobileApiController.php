@@ -40,7 +40,7 @@ class MobileApiController extends Controller
             ], 403);
         }
 
-        // Token simple con Laravel Sanctum (si está instalado) o token básico
+        // Token con Laravel Sanctum
         $token = null;
         if (method_exists($user, 'createToken')) {
             $user->tokens()->where('name', 'mobile')->delete(); // revocar tokens previos
@@ -83,17 +83,17 @@ class MobileApiController extends Controller
             $cid = $cliente->id;
             if (!isset($clientesMap[$cid])) {
                 $clientesMap[$cid] = [
-                    'id'            => $cliente->id,
-                    'id_enc'        => $cliente->id_enc,
-                    'nombres'       => $cliente->nombres,
-                    'apellidos'     => $cliente->apellidos,
-                    'full_name'     => $cliente->full_name,
-                    'cedula'        => $cliente->cedula ?? '',
-                    'telefono1'     => $cliente->telefono1 ?? '',
-                    'direccion'     => $cliente->direccion ?? '',
-                    'prestamos'     => [],
-                    'totalPendiente'=> 0,
-                    'categoria'     => 'AL_DIA',
+                    'id'             => $cliente->id,
+                    'id_enc'         => $cliente->id_enc,
+                    'nombres'        => $cliente->nombres,
+                    'apellidos'      => $cliente->apellidos,
+                    'full_name'      => $cliente->full_name,
+                    'cedula'         => $cliente->cedula ?? '',
+                    'telefono1'      => $cliente->telefono1 ?? '',
+                    'direccion'      => $cliente->direccion ?? '',
+                    'prestamos'      => [],
+                    'totalPendiente' => 0,
+                    'categoria'      => 'AL_DIA',
                 ];
             }
 
@@ -111,17 +111,17 @@ class MobileApiController extends Controller
             })->values()->toArray();
 
             $clientesMap[$cid]['prestamos'][] = [
-                'id'             => $prestamo->id,
-                'id_enc'         => $prestamo->id_enc,
-                'consecutivo'    => $prestamo->consecutivo,
-                'monto'          => (float)$prestamo->monto,
-                'pendiente_abono'=> (float)$prestamo->pendiente_abono,
-                'moneda'         => $prestamo->moneda_prestamo ?? 1,
-                'forma_pago_tipo'=> $prestamo->forma_pago_tipo,
-                'estado'         => $prestamo->estado,
-                'agente_id'      => $prestamo->agente_id,
-                'es_externo'     => false,
-                'cuotas'         => $cuotas,
+                'id'              => $prestamo->id,
+                'id_enc'          => $prestamo->id_enc,
+                'consecutivo'     => $prestamo->consecutivo,
+                'monto'           => (float)$prestamo->monto,
+                'pendiente_abono' => (float)$prestamo->pendiente_abono,
+                'moneda'          => $prestamo->moneda_prestamo ?? 1,
+                'forma_pago_tipo' => $prestamo->forma_pago_tipo,
+                'estado'          => $prestamo->estado,
+                'agente_id'       => $prestamo->agente_id,
+                'es_externo'      => false,
+                'cuotas'          => $cuotas,
             ];
 
             $clientesMap[$cid]['totalPendiente'] += (float)$prestamo->pendiente_abono;
@@ -143,16 +143,15 @@ class MobileApiController extends Controller
     public function abono(Request $request)
     {
         $request->validate([
-            'prestamo_id'  => 'required|integer',
-            'monto'        => 'required|numeric|min:0.01',
-            'fecha_abono'  => 'required|date',
+            'prestamo_id' => 'required|integer',
+            'monto'       => 'required|numeric|min:0.01',
+            'fecha_abono' => 'required|date',
         ]);
 
-        $agente    = $request->user();
+        $agente     = $request->user();
         $prestamoId = $request->prestamo_id;
         $monto      = (float)$request->monto;
         $fechaAbono = $request->fecha_abono;
-        $notas      = $request->notas ?? '';
 
         $prestamo = prestamosModel::where('id', $prestamoId)
             ->where('estado', 1)
@@ -162,68 +161,134 @@ class MobileApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Préstamo no encontrado'], 404);
         }
 
-        // Verificar que el agente puede cobrar este préstamo
-        $esPropio   = $prestamo->agente_id == $agente->id;
-        $esExterno  = !$esPropio; // El agente puede cobrar externos también
-
         try {
             DB::beginTransaction();
 
-            // Crear el abono
-            $abono = new abonosModel();
-            $abono->prestamo_id     = $prestamoId;
-            $abono->fecha_abono     = $fechaAbono;
-            $abono->tipo_abono      = 0; // Ordinario
-            $abono->estado          = 1;
-            $abono->created_user_id = $agente->id;
-            $abono->notas           = $notas;
+            // Crear el abono con los mismos campos que usa la web
+            $abono                      = new abonosModel();
+            $abono->prestamo_id         = $prestamoId;
+            $abono->fecha_abono         = $fechaAbono;
+            $abono->tipo_abono          = 1; // Ordinario
+            $abono->estado              = 1;
+            $abono->anulado_user_id     = null;
+            $abono->created_user_id     = $agente->id;
+            $abono->total_efectivo      = $monto;
+            $abono->total_tarjeta       = 0;
+            $abono->total_cheque        = 0;
+            $abono->total_transferencia = 0;
+            $abono->referencia_tarjeta      = '';
+            $abono->referencia_cheque       = '';
+            $abono->referencia_transferencia = '';
             $abono->save();
 
-            // Aplicar el monto a las cuotas pendientes (de la más antigua a la más reciente)
-            $montoRestante = $monto;
-            $cuotasPendientes = prestamoCuotasModel::where('prestamo_id', $prestamoId)
-                ->whereIn('estado', [1, 2]) // pendiente o parcial
+            // Aplicar el monto a las cuotas pendientes (misma lógica que la web)
+            // Prioridad: Interés → Capital → Mora
+            $valorRestante = $monto;
+            $cuotas = prestamoCuotasModel::where('prestamo_id', $prestamoId)
+                ->whereIn('estado', [1, 2])
                 ->orderBy('numero_cuota', 'asc')
                 ->get();
 
-            foreach ($cuotasPendientes as $cuota) {
-                if ($montoRestante <= 0) break;
+            $totalAbonado2 = 0;
 
-                $pendienteCuota = (float)$cuota->monto_pendiente_cuota;
-                $aAplicar = min($montoRestante, $pendienteCuota);
+            foreach ($cuotas as $cuota) {
+                if ($valorRestante <= 0) break;
+                if ($cuota->monto_pendiente_cuota <= 0) continue;
 
-                // Calcular capital e interés proporcional
-                $proporcion     = $cuota->monto_cuota > 0 ? ($aAplicar / $cuota->monto_cuota) : 0;
-                $capitalAplicado = round($aAplicar * 0.6, 2); // Estimado — ajustar según tu lógica
-                $interesAplicado = round($aAplicar - $capitalAplicado, 2);
+                $totalAbonoIntereses = (float)$cuota->total_pendiente_interes_cuota;
+                $totalAbonoCapital   = (float)$cuota->total_pendiente_capital_cuota;
+                $totalAbonoMora      = (float)$cuota->total_pendiente_mora_cuota;
 
-                // Detalle de abono
-                $detalle = new prestamoCuotaAbonoModel();
-                $detalle->abono_id          = $abono->id;
-                $detalle->prestamo_cuota_id = $cuota->id;
-                $detalle->monto_abono       = $aAplicar;
-                $detalle->total_capital     = $capitalAplicado;
-                $detalle->total_interes     = $interesAplicado;
-                $detalle->total_mora        = 0;
-                $detalle->estado            = 1;
-                $detalle->save();
+                $montoAbonarInteres = 0;
+                $montoAbonarCapital = 0;
+                $montoAbonarMora    = 0;
+                $totalAbonado       = 0;
 
-                // Actualizar cuota
-                $cuota->monto_pendiente_cuota = max(0, $pendienteCuota - $aAplicar);
-                $cuota->estado = $cuota->monto_pendiente_cuota == 0 ? 3 : 2;
-                if ($cuota->estado == 3) $cuota->fecha_pagado = $fechaAbono;
-                $cuota->save();
+                // Interés primero
+                if ($totalAbonoIntereses > 0) {
+                    $totalAbonoIntereses -= $valorRestante;
+                    if ($totalAbonoIntereses <= 0) {
+                        $montoAbonarInteres = (float)$cuota->total_pendiente_interes_cuota;
+                        $valorRestante      = abs($totalAbonoIntereses);
+                    } else {
+                        $montoAbonarInteres = (float)$cuota->total_pendiente_interes_cuota - $totalAbonoIntereses;
+                        $valorRestante     -= $montoAbonarInteres;
+                    }
+                    $totalAbonado += $montoAbonarInteres;
+                }
 
-                $montoRestante -= $aAplicar;
+                // Capital
+                if ($totalAbonoCapital > 0 && $valorRestante > 0) {
+                    $totalAbonoCapital -= $valorRestante;
+                    if ($totalAbonoCapital <= 0) {
+                        $montoAbonarCapital = (float)$cuota->total_pendiente_capital_cuota;
+                        $valorRestante      = abs($totalAbonoCapital);
+                    } else {
+                        $montoAbonarCapital = (float)$cuota->total_pendiente_capital_cuota - $totalAbonoCapital;
+                        $valorRestante     -= $montoAbonarCapital;
+                    }
+                    $totalAbonado += $montoAbonarCapital;
+                }
+
+                // Mora
+                if ($totalAbonoMora > 0 && $valorRestante > 0) {
+                    $totalAbonoMora -= $valorRestante;
+                    if ($totalAbonoMora <= 0) {
+                        $montoAbonarMora = (float)$cuota->total_pendiente_mora_cuota;
+                        $valorRestante   = abs($totalAbonoMora);
+                    } else {
+                        $montoAbonarMora = (float)$cuota->total_pendiente_mora_cuota - $totalAbonoMora;
+                        $valorRestante  -= $montoAbonarMora;
+                    }
+                    $totalAbonado += $montoAbonarMora;
+                }
+
+                // Detalle del abono (prestamo_cuota_abono)
+                $abonoCuota                    = new prestamoCuotaAbonoModel();
+                $abonoCuota->abono_id          = $abono->id;
+                $abonoCuota->prestamo_cuota_id = $cuota->id;
+                $abonoCuota->estado            = 1;
+                $abonoCuota->monto_abono       = $totalAbonado;
+                $abonoCuota->total_interes     = $montoAbonarInteres;
+                $abonoCuota->total_capital     = $montoAbonarCapital;
+                $abonoCuota->total_mora        = $montoAbonarMora;
+                $abonoCuota->tipo_abono        = 1;
+                $abonoCuota->fecha_abono       = \Carbon\Carbon::now();
+                $abonoCuota->created_user_id   = $agente->id;
+                $abonoCuota->save();
+
+                $totalAbonado2 += $totalAbonado;
+
+                // Actualizar estado de la cuota
+                $cuota->refresh();
+                if ($cuota->monto_pendiente_cuota == 0) {
+                    $cuota->estado       = 3;
+                    $cuota->fecha_pagado = \Carbon\Carbon::now();
+                    $cuota->save();
+                }
+
+                // Si el préstamo quedó saldado, marcarlo como pagado
+                if ($cuota->prestamo->pendiente_abono == 0) {
+                    $cuota->prestamo->estado = 2;
+                    $cuota->prestamo->save();
+                }
+            }
+
+            if ($totalAbonado2 === 0) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontraron montos pendientes para aplicar el abono',
+                ], 422);
             }
 
             DB::commit();
 
             return response()->json([
-                'success'    => true,
-                'abono_id'   => $abono->id,
-                'local_id'   => $request->local_id ?? null,
-                'message'    => 'Abono registrado correctamente',
+                'success'  => true,
+                'abono_id' => $abono->id,
+                'local_id' => $request->local_id ?? null,
+                'message'  => 'Abono registrado correctamente',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -240,10 +305,12 @@ class MobileApiController extends Controller
         $agente = $request->user();
         $hoy    = now()->toDateString();
 
-        $abonos = abonosModel::whereDate('fecha_abono', $hoy)
-            ->where('created_user_id', $agente->id)
+        $abonos = abonosModel::with(['prestamo'])
+            ->whereHas('prestamo', function ($q) use ($agente) {
+                $q->where('agente_id', $agente->id);
+            })
+            ->whereDate('fecha_abono', $hoy)
             ->where('estado', 1)
-            ->with('abono_detalle')
             ->get();
 
         $totalRecuperado = 0;
@@ -252,11 +319,10 @@ class MobileApiController extends Controller
         $clientesIds     = [];
 
         foreach ($abonos as $ab) {
-            $total = $ab->total_abonado;
+            $total            = $ab->total_abonado;
             $totalRecuperado += $total;
+            $diaRecaudado    += $total;
             $clientesIds[$ab->prestamo->user_id ?? 0] = true;
-            // Clasificación simplificada
-            $diaRecaudado += $total;
         }
 
         $totalCartera = prestamosModel::where('agente_id', $agente->id)
@@ -266,13 +332,13 @@ class MobileApiController extends Controller
             ->count();
 
         return response()->json([
-            'success'          => true,
-            'fecha'            => $hoy,
-            'total_recuperado' => $totalRecuperado,
-            'dia_recaudado'    => $diaRecaudado,
-            'mora_recaudada'   => $moraRecaudada,
-            'clientes_cobrados'=> count($clientesIds),
-            'total_cartera'    => $totalCartera,
+            'success'           => true,
+            'fecha'             => $hoy,
+            'total_recuperado'  => $totalRecuperado,
+            'dia_recaudado'     => $diaRecaudado,
+            'mora_recaudada'    => $moraRecaudada,
+            'clientes_cobrados' => count($clientesIds),
+            'total_cartera'     => $totalCartera,
         ]);
     }
 
@@ -282,11 +348,13 @@ class MobileApiController extends Controller
         foreach ($prestamos as $p) {
             if ($p['pendiente_abono'] <= 0) continue;
 
-            // Buscar cuota del día
             $cuotas = $p['cuotas'] ?? [];
+
+            // Cuota del día
             foreach ($cuotas as $c) {
                 if ($c['estado'] != 3 && $c['fecha_cuota'] === $hoy) return 'DEL_DIA';
             }
+
             // Mora: cuota vencida pendiente
             foreach ($cuotas as $c) {
                 if ($c['estado'] != 3 && $c['fecha_cuota'] < $hoy) return 'EN_MORA';

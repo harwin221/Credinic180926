@@ -315,6 +315,38 @@ class prestamosModel extends Model
         return $this->hasMany(abonosModel::class, 'prestamo_id', 'id');
     }
 
+    /**
+     * Promedio de días de atraso — misma lógica que prestamosVer2 y estado de cuenta.
+     * Reutilizable desde cualquier vista con $prestamo->promedio_dias_atraso
+     */
+    public function getPromedioDiasAtrasoAttribute(): float
+    {
+        $totalDias   = 0;
+        $totalCuotas = $this->cuotas->count();
+
+        foreach ($this->cuotas as $cuota) {
+            $fechaPlan = \Carbon\Carbon::parse($cuota->fecha_cuota);
+
+            if ($cuota->estado == 3) {
+                // Cuota pagada: días entre fecha planeada y fecha real del abono
+                $ultimoDetalle = \App\Models\prestamoCuotaAbonoModel::where('prestamo_cuota_id', $cuota->id)
+                    ->where('estado', 1)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                if ($ultimoDetalle) {
+                    $dias = $fechaPlan->diffInDays(\Carbon\Carbon::parse($ultimoDetalle->created_at), false);
+                    if ($dias > 0) $totalDias += $dias;
+                }
+            } elseif (in_array($cuota->estado, [1, 2]) && $fechaPlan->isPast()) {
+                // Cuota pendiente vencida: días acumulados hasta hoy
+                $dias = $fechaPlan->diffInDays(\Carbon\Carbon::now(), false);
+                if ($dias > 0) $totalDias += $dias;
+            }
+        }
+
+        return $totalCuotas > 0 ? round($totalDias / $totalCuotas, 2) : 0;
+    }
+
     public function getDiasAtrasoAttribute()
     {
         if (in_array($this->estado, [2, 4])) {
