@@ -67,11 +67,21 @@ class MobileApiController extends Controller
     {
         $agente = $request->user();
 
+        $hoy = \Carbon\Carbon::now()->format('Y-m-d');
         $prestamos = prestamosModel::with(['cliente', 'cuotas', 'abonos' => function($q) { $q->where('estado', 1)->orderBy('id', 'desc'); }])
             ->where('agente_id', $agente->id)
             ->whereNull('fecha_clasificacion')
-            ->where('estado', 1)
             ->where('desembolsado', 1)
+            ->where(function($q) use ($hoy) {
+                $q->where('estado', 1) // Activos
+                  ->orWhereHas('abonos', function($aq) use ($hoy) {
+                      $aq->where('estado', 1)
+                         ->where(function($dateQ) use ($hoy) {
+                             $dateQ->whereDate('fecha_abono', $hoy)
+                                   ->orWhereDate('created_at', $hoy);
+                         });
+                  });
+            })
             ->get();
 
         // Agrupar por cliente
@@ -110,9 +120,11 @@ class MobileApiController extends Controller
                 ];
             })->values()->toArray();
 
-            $hoy = now()->toDateString();
             $abonosHoy = $prestamo->abonos->filter(function($a) use ($hoy) {
-                return $a->estado == 1 && substr($a->fecha_abono, 0, 10) === $hoy;
+                if ($a->estado != 1) return false;
+                $fAbono = substr($a->fecha_abono ?? '', 0, 10);
+                $fCreated = substr($a->created_at ?? '', 0, 10);
+                return $fAbono === $hoy || $fCreated === $hoy;
             });
             $montoCobradoHoy = $abonosHoy->sum(function($a) {
                 return (float)$a->total_abonado;

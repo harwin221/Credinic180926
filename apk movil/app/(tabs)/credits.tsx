@@ -523,7 +523,7 @@ export default function CreditsScreen() {
                                 index={-1}
                                 tabColor="#64748b"
                                 activeTab="Cobro Dia"
-                                onPress={() => handleSelectCredit(item)}
+                                onToggleExpand={() => handleSelectCredit(item)}
                             />
                         ))
                     )}
