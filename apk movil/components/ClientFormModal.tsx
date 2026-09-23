@@ -241,7 +241,7 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                                 placeholder="Ej: Juan Antonio"
                                 placeholderTextColor="#94a3b8"
                                 value={formData.nombres}
-                                onChangeText={(text) => setFormData({ ...formData, nombres: text })}
+                                onChangeText={(text) => setFormData({ ...formData, nombres: text.toUpperCase() })}
                             />
 
                             {/* Apellidos */}
@@ -251,7 +251,7 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                                 placeholder="Ej: Pérez Rodríguez"
                                 placeholderTextColor="#94a3b8"
                                 value={formData.apellidos}
-                                onChangeText={(text) => setFormData({ ...formData, apellidos: text })}
+                                onChangeText={(text) => setFormData({ ...formData, apellidos: text.toUpperCase() })}
                             />
 
                             {/* Cédula */}
@@ -349,7 +349,7 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                                 multiline
                                 numberOfLines={3}
                                 value={formData.direccion}
-                                onChangeText={(text) => setFormData({ ...formData, direccion: text })}
+                                onChangeText={(text) => setFormData({ ...formData, direccion: text.toUpperCase() })}
                             />
                         </ScrollView>
                     </KeyboardAvoidingView>

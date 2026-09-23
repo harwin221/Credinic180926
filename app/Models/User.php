@@ -272,4 +272,25 @@ class User extends Authenticatable
         }
         return null;
     }
+
+    // Mutators to always store in UPPERCASE (UTF-8 safe)
+    public function setNombresAttribute($value)
+    {
+        $this->attributes['nombres'] = $value !== null ? mb_strtoupper($value, 'UTF-8') : null;
+    }
+
+    public function setApellidosAttribute($value)
+    {
+        $this->attributes['apellidos'] = $value !== null ? mb_strtoupper($value, 'UTF-8') : null;
+    }
+
+    public function setCedulaAttribute($value)
+    {
+        $this->attributes['cedula'] = $value !== null ? mb_strtoupper($value, 'UTF-8') : null;
+    }
+
+    public function setDireccionAttribute($value)
+    {
+        $this->attributes['direccion'] = $value !== null ? mb_strtoupper($value, 'UTF-8') : null;
+    }
 }
