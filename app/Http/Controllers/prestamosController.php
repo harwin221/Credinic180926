@@ -1001,6 +1001,6 @@ class prestamosController extends Controller
                     $fechaReferencia->addDays($banderaAumentar);
                 }
             }
+        }
     }
-
 }
