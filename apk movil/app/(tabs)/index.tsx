@@ -25,18 +25,28 @@ export default function RecoveredScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.id) {
-        fetchDashboardMetrics(user.id);
-      }
+      let isMounted = true;
+      const load = async () => {
+        const session = await sessionService.getSession();
+        const activeUser = user || session;
+        if (activeUser?.id && isMounted) {
+          fetchDashboardMetrics(activeUser.id, activeUser.role);
+        }
+      };
+      load();
+      return () => {
+        isMounted = false;
+      };
     }, [user])
   );
 
-  const fetchDashboardMetrics = async (userId?: string) => {
+  const fetchDashboardMetrics = async (userId?: string, userRole?: string) => {
     const id = userId || user?.id;
-    if (!id || !user?.role) return;
+    const role = userRole || user?.role;
+    if (!id || !role) return;
 
     try {
-      const url = `${API_ENDPOINTS.mobile_dashboard}?userId=${id}&role=${user.role}`;
+      const url = `${API_ENDPOINTS.mobile_dashboard}?userId=${id}&role=${role}`;
       console.log('[DASHBOARD] Fetching:', url);
       
       const resp = await apiFetch(url);

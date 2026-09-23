@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
@@ -216,7 +217,8 @@ export default function CreditsScreen() {
     }>({ visible: false, type: 'info', title: '', message: '' });
 
     // ─── Carga de cartera ─────────────────────────────────────────────────────
-    const fetchPortfolio = useCallback(async () => {
+    const fetchPortfolio = useCallback(async (showLoadingSpinner = false) => {
+        if (showLoadingSpinner) setIsLoading(true);
         const session = await sessionService.getSession();
         if (!session?.id) return;
 
@@ -277,7 +279,11 @@ export default function CreditsScreen() {
         }
     }, []);
 
-    useEffect(() => { fetchPortfolio(); }, [fetchPortfolio]);
+    useFocusEffect(
+        useCallback(() => {
+            fetchPortfolio();
+        }, [fetchPortfolio])
+    );
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -529,7 +535,7 @@ export default function CreditsScreen() {
                             <TouchableOpacity
                                 key={tab}
                                 style={[styles.tabBtn, activeTab === tab && { borderBottomWidth: 3, borderBottomColor: TAB_COLOR[tab] }]}
-                                onPress={() => setActiveTab(tab)}
+                                onPress={() => { setActiveTab(tab); setExpandedCreditId(null); }}
                             >
                                 <Text style={[styles.tabText, activeTab === tab && { color: TAB_COLOR[tab], fontWeight: 'bold' }]}>
                                     {tab} ({((portfolio as any)[TAB_KEYS[tab]] as CreditItem[])?.length ?? 0})
