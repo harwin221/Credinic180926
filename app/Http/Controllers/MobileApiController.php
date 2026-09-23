@@ -1173,11 +1173,11 @@ class MobileApiController extends Controller
     }
 
     // ─── POST /api/mobile/crear-cliente ─────────────────────────────────────────
-    public function crearCliente(Request )
+    public function crearCliente(Request $request)
     {
-         = ->user();
+        $agente = $request->user();
 
-        ->validate([
+        $request->validate([
             'nombres'   => 'required|string',
             'apellidos' => 'required|string',
             'cedula'    => 'required|string|unique:users,cedula',
@@ -1192,38 +1192,38 @@ class MobileApiController extends Controller
         ]);
 
         try {
-             = new User();
-            ->nombres = ->nombres;
-            ->apellidos = ->apellidos;
-            ->cedula = ->cedula;
-            ->telefono1 = ->telefono1;
-            ->telefono2 = ->telefono2;
-            ->direccion = ->direccion;
-            ->tipo_usuario = 3; // Cliente
-            ->password = \Hash::make('test2023');
-            ->email = \Str::random('10') . "@gmail.com";
-            ->created_user_id = ->id;
+            $user = new User();
+            $user->nombres = $request->nombres;
+            $user->apellidos = $request->apellidos;
+            $user->cedula = $request->cedula;
+            $user->telefono1 = $request->telefono1;
+            $user->telefono2 = $request->telefono2;
+            $user->direccion = $request->direccion;
+            $user->tipo_usuario = 3; // Cliente
+            $user->password = \Hash::make('test2023');
+            $user->email = \Str::random('10') . "@gmail.com";
+            $user->created_user_id = $agente->id;
             
-            ->sexo = ->has('sexo') ? ->sexo : null;
-            ->estado_civil = ->has('estado_civil') ? ->estado_civil : null;
+            $user->sexo = $request->has('sexo') ? $request->sexo : null;
+            $user->estado_civil = $request->has('estado_civil') ? $request->estado_civil : null;
             
-            if (->filled('dep_mun')) {
-                ->dep_mun = decode(->dep_mun);
+            if ($request->filled('dep_mun')) {
+                $user->dep_mun = decode($request->dep_mun);
             } else {
-                ->dep_mun = ->dep_mun;
+                $user->dep_mun = $agente->dep_mun;
             }
             
-            ->sucursal_id = ->sucursal_id;
-            ->estado = 1;
+            $user->sucursal_id = $agente->sucursal_id;
+            $user->estado = 1;
 
-            if (->save()) {
+            if ($user->save()) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Cliente creado exitosamente',
                     'data'    => [
-                        'id'        => ->id,
-                        'full_name' => ->full_name,
-                        'cedula'    => ->cedula,
+                        'id'        => $user->id,
+                        'full_name' => $user->full_name,
+                        'cedula'    => $user->cedula,
                     ]
                 ]);
             }
@@ -1233,10 +1233,10 @@ class MobileApiController extends Controller
                 'message' => 'No se pudo guardar el cliente en la base de datos'
             ], 400);
 
-        } catch (\Exception ) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear cliente: ' . ->getMessage()
+                'message' => 'Error al crear cliente: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1244,42 +1244,42 @@ class MobileApiController extends Controller
     public function getDepartamentoMunicipios()
     {
         try {
-             = departamento_municipios();
-             = [];
+            $raw_deps = departamento_municipios();
+            $formatted = [];
             
-            foreach ( as  => ) {
-                 = [];
-                foreach ( as  => ) {
-                    [] = [
-                        'id_enc' => ,
-                        'nombre' => 
+            foreach ($raw_deps as $dep_name => $municipios) {
+                $muns_list = [];
+                foreach ($municipios as $id_enc => $mun_name) {
+                    $muns_list[] = [
+                        'id_enc' => $id_enc,
+                        'nombre' => $mun_name
                     ];
                 }
                 
                 // Ordenar municipios por nombre
-                usort(, function(, ) {
-                    return strcmp(['nombre'], ['nombre']);
+                usort($muns_list, function($a, $b) {
+                    return strcmp($a['nombre'], $b['nombre']);
                 });
 
-                [] = [
-                    'departamento' => ,
-                    'municipios' => 
+                $formatted[] = [
+                    'departamento' => $dep_name,
+                    'municipios' => $muns_list
                 ];
             }
 
             // Ordenar departamentos por nombre
-            usort(, function(, ) {
-                return strcmp(['departamento'], ['departamento']);
+            usort($formatted, function($a, $b) {
+                return strcmp($a['departamento'], $b['departamento']);
             });
 
             return response()->json([
                 'success' => true,
-                'data' => 
+                'data' => $formatted
             ]);
-        } catch (\Exception ) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al obtener departamento-municipios: ' . ->getMessage()
+                'message' => 'Error al obtener departamento-municipios: ' . $e->getMessage()
             ], 500);
         }
     }
