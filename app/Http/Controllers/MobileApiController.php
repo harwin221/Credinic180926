@@ -592,7 +592,28 @@ class MobileApiController extends Controller
             'clientes_cobrados'     => $resumen['total_clientes'],
         ]);
     }
-public function recibo(Request $request)
+    // ─── Helper: categoría del cliente ────────────────────────────────────────
+    private function determinarCategoria(array $prestamos, string $hoy): string
+    {
+        foreach ($prestamos as $p) {
+            if ($p['pendiente_abono'] <= 0) continue;
+
+            $cuotas = $p['cuotas'] ?? [];
+
+            // Cuota del día
+            foreach ($cuotas as $c) {
+                if ($c['estado'] != 3 && $c['fecha_cuota'] === $hoy) return 'DEL_DIA';
+            }
+
+            // Mora: cuota vencida pendiente
+            foreach ($cuotas as $c) {
+                if ($c['estado'] != 3 && $c['fecha_cuota'] < $hoy) return 'EN_MORA';
+            }
+        }
+        return 'AL_DIA';
+    }
+
+    public function recibo(Request $request)
     {
         $abonoId = $request->abono_id ?? $request->paymentId;
         $prestamoId = $request->prestamo_id ?? $request->creditId;
