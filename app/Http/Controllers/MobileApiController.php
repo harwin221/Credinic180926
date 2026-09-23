@@ -1173,47 +1173,57 @@ class MobileApiController extends Controller
     }
 
     // ─── POST /api/mobile/crear-cliente ─────────────────────────────────────────
-    public function crearCliente(Request $request)
+    public function crearCliente(Request )
     {
-        $agente = $request->user();
+         = ->user();
 
-        $request->validate([
+        ->validate([
             'nombres'   => 'required|string',
             'apellidos' => 'required|string',
             'cedula'    => 'required|string|unique:users,cedula',
             'telefono1' => 'numeric|nullable',
             'telefono2' => 'numeric|nullable',
             'direccion' => 'string|nullable',
+            'sexo'      => 'integer|nullable',
+            'estado_civil' => 'integer|nullable',
+            'dep_mun'   => 'string|nullable',
         ], [
             'cedula.unique' => 'La cédula ya se encuentra ingresada',
         ]);
 
         try {
-            $user = new User();
-            $user->nombres = $request->nombres;
-            $user->apellidos = $request->apellidos;
-            $user->cedula = $request->cedula;
-            $user->telefono1 = $request->telefono1;
-            $user->telefono2 = $request->telefono2;
-            $user->direccion = $request->direccion;
-            $user->tipo_usuario = 3; // Cliente
-            $user->password = \Hash::make('test2023');
-            $user->email = \Str::random('10') . "@gmail.com";
-            $user->created_user_id = $agente->id;
+             = new User();
+            ->nombres = ->nombres;
+            ->apellidos = ->apellidos;
+            ->cedula = ->cedula;
+            ->telefono1 = ->telefono1;
+            ->telefono2 = ->telefono2;
+            ->direccion = ->direccion;
+            ->tipo_usuario = 3; // Cliente
+            ->password = \Hash::make('test2023');
+            ->email = \Str::random('10') . "@gmail.com";
+            ->created_user_id = ->id;
             
-            // Asignar el departamento/municipio de la sucursal o del agente
-            $user->dep_mun = $agente->dep_mun;
-            $user->sucursal_id = $agente->sucursal_id;
-            $user->estado = 1;
+            ->sexo = ->has('sexo') ? ->sexo : null;
+            ->estado_civil = ->has('estado_civil') ? ->estado_civil : null;
+            
+            if (->filled('dep_mun')) {
+                ->dep_mun = decode(->dep_mun);
+            } else {
+                ->dep_mun = ->dep_mun;
+            }
+            
+            ->sucursal_id = ->sucursal_id;
+            ->estado = 1;
 
-            if ($user->save()) {
+            if (->save()) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Cliente creado exitosamente',
                     'data'    => [
-                        'id'        => $user->id,
-                        'full_name' => $user->full_name,
-                        'cedula'    => $user->cedula,
+                        'id'        => ->id,
+                        'full_name' => ->full_name,
+                        'cedula'    => ->cedula,
                     ]
                 ]);
             }
@@ -1223,10 +1233,53 @@ class MobileApiController extends Controller
                 'message' => 'No se pudo guardar el cliente en la base de datos'
             ], 400);
 
-        } catch (\Exception $e) {
+        } catch (\Exception ) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear cliente: ' . $e->getMessage()
+                'message' => 'Error al crear cliente: ' . ->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getDepartamentoMunicipios()
+    {
+        try {
+             = departamento_municipios();
+             = [];
+            
+            foreach ( as  => ) {
+                 = [];
+                foreach ( as  => ) {
+                    [] = [
+                        'id_enc' => ,
+                        'nombre' => 
+                    ];
+                }
+                
+                // Ordenar municipios por nombre
+                usort(, function(, ) {
+                    return strcmp(['nombre'], ['nombre']);
+                });
+
+                [] = [
+                    'departamento' => ,
+                    'municipios' => 
+                ];
+            }
+
+            // Ordenar departamentos por nombre
+            usort(, function(, ) {
+                return strcmp(['departamento'], ['departamento']);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => 
+            ]);
+        } catch (\Exception ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener departamento-municipios: ' . ->getMessage()
             ], 500);
         }
     }
