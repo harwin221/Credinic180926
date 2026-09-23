@@ -1431,7 +1431,7 @@ class MobileApiController extends Controller
                 ->get()->pluck('admin_asignado_id')->toArray() : [];
             $tieneAsignados = count($agentesAsignados) > 0;
 
-            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado'])
+            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'negocio.departamento_municipio.departamento', 'userCreado'])
                 ->where('estado', '!=', 4)
                 ->where(function($q) {
                     $q->where(function($sub) {
@@ -1475,9 +1475,21 @@ class MobileApiController extends Controller
                 $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
                 $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
 
-                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
-                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
                 $dir = $p->cliente ? ($p->cliente->direccion ?? '') : '';
+                if (empty($dir) && $p->negocio) {
+                    $dir = $p->negocio->direccion ?? '';
+                }
+
+                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
+                if (empty($mun) && $p->negocio && $p->negocio->departamento_municipio) {
+                    $mun = $p->negocio->departamento_municipio->nombre ?? '';
+                }
+
+                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+                if (empty($dep) && $p->negocio && $p->negocio->departamento_municipio && $p->negocio->departamento_municipio->departamento) {
+                    $dep = $p->negocio->departamento_municipio->departamento->nombre ?? '';
+                }
+
                 $barrio = $p->cliente ? ($p->cliente->barrio ?? '') : '';
 
                 $rejectedBy = 'N/A';
@@ -1612,7 +1624,7 @@ class MobileApiController extends Controller
                 ->get()->pluck('admin_asignado_id')->toArray() : [];
             $tieneAsignados = count($agentesAsignados) > 0;
 
-            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado', 'cuotas'])
+            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'negocio.departamento_municipio.departamento', 'userCreado', 'cuotas'])
                 ->where('estado', '!=', 4)
                 ->where(function ($q) {
                     $q->where(function ($sub) {
@@ -1660,9 +1672,21 @@ class MobileApiController extends Controller
                 $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
                 $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
 
-                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
-                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
                 $dir = $p->cliente ? ($p->cliente->direccion ?? '') : '';
+                if (empty($dir) && $p->negocio) {
+                    $dir = $p->negocio->direccion ?? '';
+                }
+
+                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
+                if (empty($mun) && $p->negocio && $p->negocio->departamento_municipio) {
+                    $mun = $p->negocio->departamento_municipio->nombre ?? '';
+                }
+
+                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+                if (empty($dep) && $p->negocio && $p->negocio->departamento_municipio && $p->negocio->departamento_municipio->departamento) {
+                    $dep = $p->negocio->departamento_municipio->departamento->nombre ?? '';
+                }
+
                 $barrio = $p->cliente ? ($p->cliente->barrio ?? '') : '';
 
                 $rejectedBy = 'N/A';
@@ -1690,6 +1714,8 @@ class MobileApiController extends Controller
                     'firstPaymentDate' => $p->fecha_primer_pago ?? null,
                     'department' => $dep,
                     'municipality' => $mun,
+                    'address' => $dir,
+                    'neighborhood' => $barrio,
                     'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
                     'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
                     'disbursementDate' => $p->fecha_desembolso ? $p->fecha_desembolso : null,
