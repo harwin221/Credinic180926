@@ -764,16 +764,17 @@ class MobileApiController extends Controller
         $agente = $request->user();
         $buscar = trim($request->get('search', $request->get('buscar', '')));
 
+        // Obtener clientes del agente que tienen o tuvieron préstamos desembolsados (1: Activo, 2: Pagado)
         $clientes = User::join('prestamos as P', 'users.id', 'P.user_id')
             ->when($buscar, function ($query) use ($buscar) {
                 $query->where(function ($q) use ($buscar) {
-                    $q->where('nombres', 'like', '%' . $buscar . '%')
-                      ->orWhere('apellidos', 'like', '%' . $buscar . '%')
-                      ->orWhere('cedula', 'like', '%' . $buscar . '%');
+                    $q->where('users.nombres', 'like', '%' . $buscar . '%')
+                      ->orWhere('users.apellidos', 'like', '%' . $buscar . '%')
+                      ->orWhere('users.cedula', 'like', '%' . $buscar . '%');
                 });
             })
             ->where('P.desembolsado', 1)
-            ->whereNotIn('P.estado', [2, 4]) // excluir pagados y anulados
+            ->whereIn('P.estado', [1, 2]) // 1: Activo, 2: Pagado
             ->where('P.agente_id', $agente->id)
             ->whereNull('P.fecha_clasificacion')
             ->select('users.*')
@@ -787,6 +788,7 @@ class MobileApiController extends Controller
         $renewal = [];
 
         foreach ($clientes as $c) {
+            // 1. Obtener préstamos activos del cliente con este agente
             $prestamosActivos = prestamosModel::where('user_id', $c->id)
                 ->where('agente_id', $agente->id)
                 ->where('estado', 1)
@@ -794,8 +796,9 @@ class MobileApiController extends Controller
                 ->whereNull('fecha_clasificacion')
                 ->get();
 
+            $tieneCreditoActivo = $prestamosActivos->count() > 0;
             $totalSaldo = $prestamosActivos->sum('pendiente_abono');
-            $primerPrestamo = $prestamosActivos->first();
+            $primerPrestamoActivo = $prestamosActivos->first();
 
             $clientData = [
                 'id'            => $c->id,
@@ -805,24 +808,57 @@ class MobileApiController extends Controller
                 'cedula'        => $c->cedula ?? '',
                 'phone'         => $c->telefono1 ? ($c->telefono1 . ($c->telefono2 ? ' / ' . $c->telefono2 : '')) : ($c->telefono2 ?? ''),
                 'address'       => $c->direccion ?? '',
-                'municipio'     => ($c->departamento_municipio && $c->departamento_municipio->departamento) 
-                                    ? ($c->departamento_municipio->nombre . ', ' . $c->departamento_municipio->departamento->nombre) 
-                                    : '',
+                'municipio'     => ($c->departamento_municipio && $c->departamento_municipio->departamento)
+                                     ? ($c->departamento_municipio->nombre . ', ' . $c->departamento_municipio->departamento->nombre)
+                                     : '',
                 'totalSaldo'    => (float)$totalSaldo,
                 'activeCredits' => $prestamosActivos->count(),
-                'creditNumber'  => $primerPrestamo ? ($primerPrestamo->consecutivo ?? $primerPrestamo->id) : '',
+                'creditNumber'  => $primerPrestamoActivo ? ($primerPrestamoActivo->consecutivo ?? $primerPrestamoActivo->id) : '',
             ];
 
-            $all[] = $clientData;
+            if ($tieneCreditoActivo) {
+                $all[] = $clientData;
 
-            // Clasificación de Représtamo o Renovación según porcentaje pagado del préstamo
-            if ($primerPrestamo && $primerPrestamo->monto > 0) {
-                $pagado = max(0, $primerPrestamo->monto - $primerPrestamo->pendiente_abono);
-                $pctPagado = ($pagado / $primerPrestamo->monto) * 100;
-                if ($pctPagado >= 70 && $pctPagado < 100) {
-                    $reloan[] = $clientData;
-                } elseif ($pctPagado >= 90) {
-                    $renewal[] = $clientData;
+                // Clasificación de REPRÉSTAMOS:
+                // - Tiene pagado el 75% o más del monto total / total financiado
+                // - Promedio de días de atraso del crédito actual < 2.5 días
+                if ($primerPrestamoActivo && $primerPrestamoActivo->monto_financiado > 0) {
+                    $pagado = max(0, (float)$primerPrestamoActivo->monto_financiado - (float)$primerPrestamoActivo->pendiente_abono);
+                    $pctPagado = ($pagado / (float)$primerPrestamoActivo->monto_financiado) * 100;
+                    $promedioAtraso = (float)$primerPrestamoActivo->promedio_dias_atraso;
+
+                    if ($pctPagado >= 75 && $pctPagado < 100 && $promedioAtraso < 2.5) {
+                        $reloan[] = $clientData;
+                    }
+                }
+            } else {
+                // Clasificación de RENOVACIONES:
+                // - Clientes que cancelaron el 100% de su crédito (monto total financiado pagado, sin crédito activo)
+                // - No volvieron a crear una solicitud de crédito
+                // - Promedio de días de atraso del último crédito cancelado < 2.5 días
+
+                $ultimoPrestamoCancelado = prestamosModel::where('user_id', $c->id)
+                    ->where('agente_id', $agente->id)
+                    ->where('estado', 2) // Pagado / Cancelado
+                    ->where('desembolsado', 1)
+                    ->orderBy('id', 'desc')
+                    ->first();
+
+                if ($ultimoPrestamoCancelado) {
+                    $tieneSolicitudCurso = prestamosModel::where('user_id', $c->id)
+                        ->where('agente_id', $agente->id)
+                        ->where('desembolsado', 0)
+                        ->whereIn('estado_aprobacion', [1, 2]) // 1: Pendiente, 2: Aprobado
+                        ->exists();
+
+                    if (!$tieneSolicitudCurso) {
+                        $promedioAtrasoUltimo = (float)$ultimoPrestamoCancelado->promedio_dias_atraso;
+
+                        if ($promedioAtrasoUltimo < 2.5) {
+                            $clientData['creditNumber'] = $ultimoPrestamoCancelado->consecutivo ?? $ultimoPrestamoCancelado->id;
+                            $renewal[] = $clientData;
+                        }
+                    }
                 }
             }
         }
@@ -837,8 +873,6 @@ class MobileApiController extends Controller
         ]);
     }
 
-    // ─── GET /api/mobile/cliente-detalle ───────────────────────────────────────
-    // Detalle completo del cliente, préstamo activo (o más reciente), plan de pagos e historial de abonos
     public function clienteDetalle(Request $request)
     {
         $clientId = $request->get('clientId', $request->get('id'));
