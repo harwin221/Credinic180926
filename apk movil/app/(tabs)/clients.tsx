@@ -537,6 +537,31 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
+    fabButton: {
+        position: 'absolute',
+        bottom: 90, // Un poco por encima de la barra de tabs (generalmente de 60-80px) para que no la obstruya
+        right: 20,
+        backgroundColor: '#10b981', // Verde esmeralda súper llamativo
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        borderRadius: 25,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        elevation: 8,
+        shadowColor: '#10b981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 5,
+        zIndex: 9999, // Super alta prioridad para que flote por encima de todo
+    },
+    fabButtonText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: 'bold',
+        letterSpacing: 0.5,
+    },
     searchWrapper: { 
         flexDirection: 'row', 
         alignItems: 'center', 
