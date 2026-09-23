@@ -6,16 +6,9 @@ const db = SQLite.openDatabaseSync('credinica_offline.db');
 // Función para inicializar las tablas de la base de datos offline
 export const initOfflineDatabase = () => {
     try {
-        // Eliminar tablas existentes para recrearlas con la nueva estructura
-        db.execSync('DROP TABLE IF EXISTS offline_clients;');
-        db.execSync('DROP TABLE IF EXISTS offline_credits;');
-        db.execSync('DROP TABLE IF EXISTS pending_payments;');
-        db.execSync('DROP TABLE IF EXISTS pending_credits;');
-        db.execSync('DROP TABLE IF EXISTS config;');
-        
-        // Crear tablas con la nueva estructura
+        // Crear tablas si no existen preservando los datos offline existentes
         db.execSync(
-            `CREATE TABLE offline_clients (
+            `CREATE TABLE IF NOT EXISTS offline_clients (
                 id TEXT PRIMARY KEY NOT NULL,
                 clientNumber TEXT,
                 name TEXT,
@@ -29,7 +22,7 @@ export const initOfflineDatabase = () => {
             );`
         );
         db.execSync(
-            `CREATE TABLE offline_credits (
+            `CREATE TABLE IF NOT EXISTS offline_credits (
                 id TEXT PRIMARY KEY NOT NULL,
                 creditNumber TEXT,
                 clientName TEXT,
@@ -46,7 +39,7 @@ export const initOfflineDatabase = () => {
             );`
         );
         db.execSync(
-            `CREATE TABLE pending_payments (
+            `CREATE TABLE IF NOT EXISTS pending_payments (
                 timestamp INTEGER PRIMARY KEY NOT NULL,
                 creditId TEXT NOT NULL,
                 paymentData TEXT NOT NULL,
@@ -54,14 +47,14 @@ export const initOfflineDatabase = () => {
             );`
         );
         db.execSync(
-            `CREATE TABLE pending_credits (
+            `CREATE TABLE IF NOT EXISTS pending_credits (
                 timestamp INTEGER PRIMARY KEY NOT NULL,
                 creditData TEXT NOT NULL,
                 userId TEXT NOT NULL
             );`
         );
         db.execSync(
-            `CREATE TABLE config (
+            `CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY NOT NULL,
                 value TEXT
             );`
