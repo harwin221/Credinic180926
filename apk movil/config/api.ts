@@ -2,13 +2,13 @@
 // Cambia esta URL según tu entorno
 
 // Para desarrollo local (tu computadora)
-// export const API_BASE_URL = 'http://192.168.0.13:3000'; // Cambia la IP por la de tu computadora
+// export const API_BASE_URL = 'http://192.168.0.11:3000'; // Cambia la IP por la de tu computadora
 
 // Para producción (URL real del sistema)
-// export const API_BASE_URL = 'https://app.credinica.com';
+export const API_BASE_URL = 'https://credinica.com';
 
 // Para desarrollo local en red WiFi
-export const API_BASE_URL = 'http://192.168.0.13:8000';
+//export const API_BASE_URL = 'http://192.168.0.11:8000';
 
 // Para desarrollo con Vercel (testing)
 // export const API_BASE_URL = 'https://credinic-apk.vercel.app';
