@@ -1425,66 +1425,97 @@ class MobileApiController extends Controller
 
     public function requests(Request $request)
     {
-        $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
-        $agentesAsignados = $user ? \App\Models\userAsignadoModel::where('user_id', $user->id)
-            ->get()->pluck('admin_asignado_id')->toArray() : [];
-        $tieneAsignados = count($agentesAsignados) > 0;
+        try {
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
+            $agentesAsignados = $user ? \App\Models\userAsignadoModel::where('user_id', $user->id)
+                ->get()->pluck('admin_asignado_id')->toArray() : [];
+            $tieneAsignados = count($agentesAsignados) > 0;
 
-        $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado'])
-            ->where(function($q) {
-                $q->where('estado_aprobacion', 1)
-                  ->orWhere('estado_aprobacion', 3);
-            })
-            ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
-                $query->whereIn('agente_id', $agentesAsignados);
-            })
-            ->orderBy('id', 'desc')
-            ->get();
+            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado'])
+                ->where(function($q) {
+                    $q->where(function($sub) {
+                        $sub->where('estado_aprobacion', 1)
+                            ->where(function($d) {
+                                $d->where('desembolsado', 0)->orWhereNull('desembolsado');
+                            });
+                    })
+                    ->orWhere(function($sub) {
+                        $sub->where('estado_aprobacion', 3)
+                            ->whereDate('updated_at', \Carbon\Carbon::today());
+                    });
+                })
+                ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
+                    $query->whereIn('agente_id', $agentesAsignados);
+                })
+                ->orderBy('id', 'desc')
+                ->get();
 
-        $formatted = [];
-        foreach ($prestamos as $p) {
-            $isPending = ($p->estado_aprobacion == 1);
-            $isRejected = ($p->estado_aprobacion == 3);
+            $formatted = [];
+            foreach ($prestamos as $p) {
+                $isPending = ($p->estado_aprobacion == 1);
+                $isRejected = ($p->estado_aprobacion == 3);
 
-            if (!$isPending && !$isRejected) {
-                continue;
+                if (!$isPending && !$isRejected) {
+                    continue;
+                }
+
+                $saldoPendiente = 0;
+                if ($p->user_id) {
+                    $otrosPrestamos = \App\Models\prestamosModel::where('user_id', $p->user_id)
+                        ->where('estado', 1)
+                        ->where('desembolsado', 1)
+                        ->where('id', '!=', $p->id)
+                        ->get();
+                    $saldoPendiente = $otrosPrestamos->sum(function($item) {
+                        return (float)($item->pendiente_abono ?? 0);
+                    });
+                }
+
+                $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
+                $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
+
+                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
+                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+
+                $rejectedBy = 'N/A';
+                if ($p->updated_user_id) {
+                    $uReject = \App\Models\User::find($p->updated_user_id);
+                    if ($uReject) {
+                        $rejectedBy = $uReject->full_name ?? trim($uReject->nombres . ' ' . $uReject->apellidos);
+                    }
+                }
+
+                $formatted[] = [
+                    'id' => $p->id,
+                    'clientName' => $p->cliente ? ($p->cliente->full_name ?? trim($p->cliente->nombres . ' ' . $p->cliente->apellidos)) : 'N/A',
+                    'creditNumber' => $p->consecutivo ?? (string)$p->id,
+                    'status' => $isPending ? 'Pending' : 'Rejected',
+                    'amount' => $montoPrestamo,
+                    'totalAmount' => (float)($p->monto_financiado ?? 0),
+                    'outstandingBalance' => (float)$saldoPendiente,
+                    'netDisbursementAmount' => (float)$netDisbursement,
+                    'termMonths' => (int)($p->plazo_pago ?? 0),
+                    'department' => $dep,
+                    'municipality' => $mun,
+                    'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
+                    'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
+                    'rejectionReason' => $p->comentarios_rechazado ?? '',
+                    'rejectedBy' => $rejectedBy
+                ];
             }
 
-            $saldoPendiente = \App\Models\prestamosModel::where('user_id', $p->user_id)
-                ->where('estado', 1)
-                ->where('desembolsado', 1)
-                ->where('id', '!=', $p->id)
-                ->sum('pendiente_abono');
-
-            $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
-            $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
-
-            $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
-            $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
-
-            $formatted[] = [
-                'id' => $p->id,
-                'clientName' => $p->cliente ? ($p->cliente->full_name ?? trim($p->cliente->nombres . ' ' . $p->cliente->apellidos)) : 'N/A',
-                'creditNumber' => $p->consecutivo ?? (string)$p->id,
-                'status' => $isPending ? 'Pending' : 'Rejected',
-                'amount' => $montoPrestamo,
-                'totalAmount' => (float)($p->monto_financiado ?? 0),
-                'outstandingBalance' => (float)$saldoPendiente,
-                'netDisbursementAmount' => (float)$netDisbursement,
-                'termMonths' => (int)($p->plazo_pago ?? 0),
-                'department' => $dep,
-                'municipality' => $mun,
-                'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
-                'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
-                'rejectionReason' => $p->comentarios_rechazado ?? '',
-                'rejectedBy' => $p->userAprobado ? ($p->userAprobado->full_name ?? $p->userAprobado->nombres) : 'N/A'
-            ];
+            return response()->json([
+                'success' => true,
+                'requests' => $formatted
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en requests: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cargar solicitudes: ' . $e->getMessage(),
+                'requests' => []
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'requests' => $formatted
-        ]);
     }
 
     public function approveCredit(Request $request)
@@ -1495,9 +1526,10 @@ class MobileApiController extends Controller
 
         try {
             $prestamoId = $request->creditId;
-            $user = $request->user();
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
 
             $prestamo = \App\Models\prestamosModel::find($prestamoId);
+
             if (!$prestamo) {
                 return response()->json([
                     'success' => false,
@@ -1506,8 +1538,13 @@ class MobileApiController extends Controller
             }
 
             $prestamo->estado_aprobacion = 2; // Aprobado
-            $prestamo->updated_user_id = $user->id;
+            $prestamo->updated_user_id = $user ? $user->id : null;
             $prestamo->save();
+
+            if ($prestamo->cliente && $prestamo->cliente->tipo_usuario == 6) {
+                $prestamo->cliente->tipo_usuario = 3;
+                $prestamo->cliente->save();
+            }
 
             return response()->json([
                 'success' => true,
@@ -1530,9 +1567,10 @@ class MobileApiController extends Controller
 
         try {
             $prestamoId = $request->creditId;
-            $user = $request->user();
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
 
             $prestamo = \App\Models\prestamosModel::find($prestamoId);
+
             if (!$prestamo) {
                 return response()->json([
                     'success' => false,
@@ -1542,7 +1580,7 @@ class MobileApiController extends Controller
 
             $prestamo->estado_aprobacion = 3; // Rechazado
             $prestamo->comentarios_rechazado = $request->reason;
-            $prestamo->updated_user_id = $user->id;
+            $prestamo->updated_user_id = $user ? $user->id : null;
             $prestamo->save();
 
             return response()->json([
@@ -1559,80 +1597,103 @@ class MobileApiController extends Controller
 
     public function disbursements(Request $request)
     {
-        $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
-        $agentesAsignados = $user ? \App\Models\userAsignadoModel::where('user_id', $user->id)
-            ->get()->pluck('admin_asignado_id')->toArray() : [];
-        $tieneAsignados = count($agentesAsignados) > 0;
+        try {
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
+            $agentesAsignados = $user ? \App\Models\userAsignadoModel::where('user_id', $user->id)
+                ->get()->pluck('admin_asignado_id')->toArray() : [];
+            $tieneAsignados = count($agentesAsignados) > 0;
 
-        $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado', 'cuotas'])
-            ->where(function ($q) {
-                $q->where(function ($sub) {
-                    $sub->where('estado_aprobacion', 2)
-                        ->where(function($d) {
-                            $d->where('desembolsado', 0)->orWhereNull('desembolsado');
-                        });
+            $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado', 'cuotas'])
+                ->where(function ($q) {
+                    $q->where(function ($sub) {
+                        $sub->where('estado_aprobacion', 2)
+                            ->where(function($d) {
+                                $d->where('desembolsado', 0)->orWhereNull('desembolsado');
+                            });
+                    })
+                    ->orWhere(function ($sub) {
+                        $sub->where('desembolsado', 1)
+                            ->whereDate('fecha_desembolso', \Carbon\Carbon::today());
+                    })
+                    ->orWhere(function ($sub) {
+                        $sub->where('estado_aprobacion', 3)
+                            ->whereDate('updated_at', \Carbon\Carbon::today());
+                    });
                 })
-                ->orWhere(function ($sub) {
-                    $sub->where('desembolsado', 1)
-                        ->whereDate('fecha_desembolso', \Carbon\Carbon::today());
+                ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
+                    $query->whereIn('agente_id', $agentesAsignados);
                 })
-                ->orWhere(function ($sub) {
-                    $sub->where('estado_aprobacion', 3)
-                        ->whereDate('updated_at', \Carbon\Carbon::today());
-                });
-            })
-            ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
-                $query->whereIn('agente_id', $agentesAsignados);
-            })
-            ->orderBy('id', 'desc')
-            ->get();
+                ->orderBy('id', 'desc')
+                ->get();
 
-        $formatted = [];
-        foreach ($prestamos as $p) {
-            $status = 'Approved';
-            if ($p->desembolsado == 1) {
-                $status = 'Active';
-            } elseif ($p->estado_aprobacion == 3) {
-                $status = 'Rejected';
+            $formatted = [];
+            foreach ($prestamos as $p) {
+                $status = 'Approved';
+                if ($p->desembolsado == 1) {
+                    $status = 'Active';
+                } elseif ($p->estado_aprobacion == 3) {
+                    $status = 'Rejected';
+                }
+
+                $saldoPendiente = 0;
+                if ($p->user_id) {
+                    $otrosPrestamos = \App\Models\prestamosModel::where('user_id', $p->user_id)
+                        ->where('estado', 1)
+                        ->where('desembolsado', 1)
+                        ->where('id', '!=', $p->id)
+                        ->get();
+                    $saldoPendiente = $otrosPrestamos->sum(function($item) {
+                        return (float)($item->pendiente_abono ?? 0);
+                    });
+                }
+
+                $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
+                $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
+
+                $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
+                $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+
+                $rejectedBy = 'N/A';
+                if ($p->updated_user_id) {
+                    $uReject = \App\Models\User::find($p->updated_user_id);
+                    if ($uReject) {
+                        $rejectedBy = $uReject->full_name ?? trim($uReject->nombres . ' ' . $uReject->apellidos);
+                    }
+                }
+
+                $formatted[] = [
+                    'id' => $p->id,
+                    'clientName' => $p->cliente ? ($p->cliente->full_name ?? trim($p->cliente->nombres . ' ' . $p->cliente->apellidos)) : 'N/A',
+                    'creditNumber' => $p->consecutivo ?? (string)$p->id,
+                    'status' => $status,
+                    'amount' => $montoPrestamo,
+                    'totalAmount' => (float)($p->monto_financiado ?? 0),
+                    'outstandingBalance' => (float)$saldoPendiente,
+                    'netDisbursementAmount' => (float)$netDisbursement,
+                    'totalInstallmentAmount' => (float)($p->monto_financiado ?? 0),
+                    'termMonths' => (int)($p->plazo_pago ?? 0),
+                    'department' => $dep,
+                    'municipality' => $mun,
+                    'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
+                    'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
+                    'disbursementDate' => $p->fecha_desembolso ? $p->fecha_desembolso : null,
+                    'rejectionReason' => $p->comentarios_rechazado ?? '',
+                    'rejectedBy' => $rejectedBy
+                ];
             }
 
-            $saldoPendiente = \App\Models\prestamosModel::where('user_id', $p->user_id)
-                ->where('estado', 1)
-                ->where('desembolsado', 1)
-                ->where('id', '!=', $p->id)
-                ->sum('pendiente_abono');
-
-            $montoPrestamo = (float)($p->monto_prestamo ?? $p->monto ?? 0);
-            $netDisbursement = max(0, $montoPrestamo - $saldoPendiente);
-
-            $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
-            $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
-
-            $formatted[] = [
-                'id' => $p->id,
-                'clientName' => $p->cliente ? ($p->cliente->full_name ?? trim($p->cliente->nombres . ' ' . $p->cliente->apellidos)) : 'N/A',
-                'creditNumber' => $p->consecutivo ?? (string)$p->id,
-                'status' => $status,
-                'amount' => $montoPrestamo,
-                'totalAmount' => (float)($p->monto_financiado ?? 0),
-                'outstandingBalance' => (float)$saldoPendiente,
-                'netDisbursementAmount' => (float)$netDisbursement,
-                'totalInstallmentAmount' => (float)($p->monto_financiado ?? 0),
-                'termMonths' => (int)($p->plazo_pago ?? 0),
-                'department' => $dep,
-                'municipality' => $mun,
-                'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
-                'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
-                'disbursementDate' => $p->fecha_desembolso ? $p->fecha_desembolso : null,
-                'rejectionReason' => $p->comentarios_rechazado ?? '',
-                'rejectedBy' => $p->userAprobado ? ($p->userAprobado->full_name ?? $p->userAprobado->nombres) : 'N/A'
-            ];
+            return response()->json([
+                'success' => true,
+                'disbursements' => $formatted
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en disbursements: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cargar desembolsos: ' . $e->getMessage(),
+                'disbursements' => []
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'disbursements' => $formatted
-        ]);
     }
 
     public function disburseCredit(Request $request)
@@ -1643,9 +1704,10 @@ class MobileApiController extends Controller
 
         try {
             $prestamoId = $request->creditId;
-            $user = $request->user();
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
 
             $prestamo = \App\Models\prestamosModel::find($prestamoId);
+
             if (!$prestamo) {
                 return response()->json([
                     'success' => false,
@@ -1661,7 +1723,7 @@ class MobileApiController extends Controller
             }
 
             $prestamo->desembolsado = 1;
-            $prestamo->user_desembolso = $user->id;
+            $prestamo->user_desembolso = $user ? $user->id : null;
             $prestamo->fecha_desembolso = date('Y-m-d');
             $prestamo->save();
 
@@ -1686,9 +1748,10 @@ class MobileApiController extends Controller
 
         try {
             $prestamoId = $request->creditId;
-            $user = $request->user();
+            $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
 
             $prestamo = \App\Models\prestamosModel::find($prestamoId);
+
             if (!$prestamo) {
                 return response()->json([
                     'success' => false,
@@ -1698,7 +1761,7 @@ class MobileApiController extends Controller
 
             $prestamo->estado_aprobacion = 3; // Rechazado / Cancelado
             $prestamo->comentarios_rechazado = $request->reason;
-            $prestamo->updated_user_id = $user->id;
+            $prestamo->updated_user_id = $user ? $user->id : null;
             $prestamo->save();
 
             return response()->json([
