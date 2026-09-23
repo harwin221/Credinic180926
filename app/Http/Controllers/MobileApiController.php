@@ -1100,10 +1100,11 @@ class MobileApiController extends Controller
         $montoCuota = round($montoTotalFinanciar / $numeroCuotas, 2);
         $interesPagar = round($totalIntereses / $numeroCuotas, 2);
 
-        // 4. Inferir día de la semana preferido si es semanal/catorcenal
+        // 4. Determinar días/fechas y días preferidos
         $firstPaymentCarbon = \Carbon\Carbon::parse($request->firstPaymentDate);
-        $diaSemanaPreferido = null;
-        if (in_array($formaPagoId, ["2", "7"])) {
+        
+        $diaSemanaPreferido = $request->diaSemanaPreferido ?? null;
+        if (in_array($formaPagoId, ["2", "7"]) && empty($diaSemanaPreferido)) {
             $diaSemanaPreferido = $firstPaymentCarbon->dayOfWeek; // 0=Dom, 1=Lun, etc.
         }
 
@@ -1116,7 +1117,8 @@ class MobileApiController extends Controller
             'fiador'              => null,
             'negocio'             => null,
             'fechaPrestamo'       => \Carbon\Carbon::now()->toDateString(),
-            'desembolso'          => null,
+            // CRÍTICO: 'desembolso' no debe ser null para evitar error en decode($request->desembolso)
+            'desembolso'          => encode($agente->id), 
             'fechaDesembolso'     => \Carbon\Carbon::now()->toDateString(),
             'moneda'              => 'C$',
             'montoFinanciar'      => $amount,
@@ -1134,16 +1136,15 @@ class MobileApiController extends Controller
             'dias_mora'           => 1,
             'moraTipo'            => 'Fijo',
             'monto_mora'          => 0.00,
-            'tipo_prestamo'       => $request->tipoPrestamo ?? 'Nuevo',
-            'tipo_destino'        => null,
+            'tipo_prestamo'       => $request->tipoPrestamo ?? '1', // 1: Nuevo, 2: Represtamo, etc.
+            'tipo_destino'        => $request->tipoDestino ?? '2',  // 1: Comercio, 2: Consumo, etc.
             'diaSemanaPreferido'  => $diaSemanaPreferido,
-            'dia_pago_preferido'  => null,
+            'dia_pago_preferido'  => $request->diaPagoPreferido ?? null,
             'diasPago'            => null,
         ]);
 
         try {
             // 6. Invocar al método store del prestamosController usando el contenedor
-            // Esto asegura la persistencia, el consecutivo único y la generación de cuotas (plan de pagos)
             $webController = app(\App\Http\Controllers\prestamosController::class);
             $webResponse = $webController->store($webRequest);
 

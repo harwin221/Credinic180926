@@ -16,6 +16,34 @@ interface CreditFormModalProps {
 
 const PAYMENT_FREQUENCIES = ['Diario', 'Semanal', 'Catorcenal', 'Quincenal'];
 
+const LOAN_TYPES = [
+    { label: 'Nuevo', value: '1' },
+    { label: 'Représtamo', value: '2' },
+    { label: 'Reactivación', value: '3' },
+    { label: 'Reestructuración', value: '4' },
+];
+
+const DESTINATION_TYPES = [
+    { label: 'Comercio', value: '1' },
+    { label: 'Personales/Consumo', value: '2' },
+    { label: 'Servicios', value: '3' },
+    { label: 'Vivienda (Compra/Mejora)', value: '4' },
+    { label: 'Construcción', value: '5' },
+    { label: 'Industria', value: '6' },
+    { label: 'Pesca', value: '7' },
+    { label: 'Agropecuario', value: '8' },
+    { label: 'Otros', value: '9' },
+];
+
+const WEEK_DAYS = [
+    { label: 'Lun', value: '1' },
+    { label: 'Mar', value: '2' },
+    { label: 'Mié', value: '3' },
+    { label: 'Jue', value: '4' },
+    { label: 'Vie', value: '5' },
+    { label: 'Sáb', value: '6' },
+];
+
 export default function CreditFormModal({ visible, onClose, client, onSuccess }: CreditFormModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -34,10 +62,14 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
 
     const [formData, setFormData] = useState({
         amount: '',
-        interestRate: '15', // Tasa de interés mensual estándar por defecto
-        termMonths: '3', // Plazo mensual estándar por defecto
+        interestRate: '15', // Tasa de interés mensual estándar por defecto (15%)
+        termMonths: '3', // Plazo mensual estándar por defecto (3 meses)
         paymentFrequency: 'Semanal',
         firstPaymentDate: new Date(),
+        tipoPrestamo: '1', // 1 = Nuevo por defecto
+        tipoDestino: '2', // 2 = Personales/Consumo por defecto
+        diaSemanaPreferido: '', // Día de la semana preferido
+        diaPagoPreferido: '', // Día preferido del mes (1-31)
     });
 
     // Resetear formulario cuando se abre el modal
@@ -47,12 +79,19 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
             const nextWeek = new Date();
             nextWeek.setDate(nextWeek.getDate() + 7);
             
+            // Si el cliente viene de Représtamos, sugerir Tipo de Préstamo como Représtamo (value: '2')
+            const isReprestamoTab = client?.isReprestamo === true || (client?.activeCredits === 0 && client?.totalSaldo === 0);
+
             setFormData({
                 amount: '',
                 interestRate: '15',
                 termMonths: '3',
                 paymentFrequency: 'Semanal',
                 firstPaymentDate: nextWeek,
+                tipoPrestamo: isReprestamoTab ? '2' : '1',
+                tipoDestino: '2',
+                diaSemanaPreferido: '',
+                diaPagoPreferido: '',
             });
         }
     }, [visible]);
@@ -104,6 +143,31 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
             return;
         }
 
+        // Validación de Día de la Semana para Semanal / Catorcenal
+        if ((formData.paymentFrequency === 'Semanal' || formData.paymentFrequency === 'Catorcenal') && !formData.diaSemanaPreferido) {
+            setAlert({
+                visible: true,
+                type: 'warning',
+                title: 'Campo Requerido',
+                message: 'Debes seleccionar el Día de la Semana pactado.',
+            });
+            return;
+        }
+
+        // Validación de Día Preferido para Quincenal
+        if (formData.paymentFrequency === 'Quincenal') {
+            const dayNum = parseInt(formData.diaPagoPreferido);
+            if (!formData.diaPagoPreferido || isNaN(dayNum) || dayNum < 1 || dayNum > 31) {
+                setAlert({
+                    visible: true,
+                    type: 'warning',
+                    title: 'Día Inválido',
+                    message: 'Debes ingresar un día de pago preferido válido (entre 1 y 31).',
+                });
+                return;
+            }
+        }
+
         setIsSubmitting(true);
         try {
             const session = await sessionService.getSession();
@@ -126,6 +190,10 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                 termMonths: parseFloat(formData.termMonths),
                 paymentFrequency: formData.paymentFrequency,
                 firstPaymentDate: formData.firstPaymentDate.toISOString(),
+                tipoPrestamo: formData.tipoPrestamo,
+                tipoDestino: formData.tipoDestino,
+                diaSemanaPreferido: formData.diaSemanaPreferido ? parseInt(formData.diaSemanaPreferido) : null,
+                diaPagoPreferido: formData.diaPagoPreferido ? parseInt(formData.diaPagoPreferido) : null,
             };
 
             const response = await apiFetch(`${API_ENDPOINTS.mobile_create_credit}`, {
@@ -187,7 +255,7 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                     <Text style={styles.clientInfo}>Cliente: {client?.name}</Text>
 
                     <KeyboardAvoidingView
-                        behavior="padding"
+                        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                         style={styles.keyboardView}
                         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
                     >
@@ -197,6 +265,38 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                             contentContainerStyle={styles.formScrollContent}
                             keyboardShouldPersistTaps="handled"
                         >
+                            {/* Tipo de Préstamo */}
+                            <Text style={styles.label}>Tipo de Préstamo</Text>
+                            <View style={styles.pillContainer}>
+                                {LOAN_TYPES.map(type => (
+                                    <TouchableOpacity
+                                        key={type.value}
+                                        style={[styles.pillOption, formData.tipoPrestamo === type.value && styles.pillOptionActive]}
+                                        onPress={() => setFormData({ ...formData, tipoPrestamo: type.value })}
+                                    >
+                                        <Text style={[styles.pillOptionText, formData.tipoPrestamo === type.value && styles.pillOptionTextActive]}>
+                                            {type.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Tipo de Destino */}
+                            <Text style={styles.label}>Tipo de Destino</Text>
+                            <View style={styles.gridContainer}>
+                                {DESTINATION_TYPES.map(dest => (
+                                    <TouchableOpacity
+                                        key={dest.value}
+                                        style={[styles.gridOption, formData.tipoDestino === dest.value && styles.gridOptionActive]}
+                                        onPress={() => setFormData({ ...formData, tipoDestino: dest.value })}
+                                    >
+                                        <Text style={[styles.gridOptionText, formData.tipoDestino === dest.value && styles.gridOptionTextActive]}>
+                                            {dest.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
                             {/* Monto */}
                             <Text style={styles.label}>Monto del Crédito (C$)</Text>
                             <TextInput
@@ -234,7 +334,15 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                                     <TouchableOpacity
                                         key={freq}
                                         style={[styles.pickerOption, formData.paymentFrequency === freq && styles.pickerOptionActive]}
-                                        onPress={() => setFormData({ ...formData, paymentFrequency: freq })}
+                                        onPress={() => {
+                                            // Limpiar campos dependientes al cambiar frecuencia
+                                            setFormData({ 
+                                                ...formData, 
+                                                paymentFrequency: freq,
+                                                diaSemanaPreferido: '',
+                                                diaPagoPreferido: '',
+                                            });
+                                        }}
                                     >
                                         <Text style={[styles.pickerOptionText, formData.paymentFrequency === freq && styles.pickerOptionTextActive]}>
                                             {freq}
@@ -242,6 +350,45 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                                     </TouchableOpacity>
                                 ))}
                             </View>
+
+                            {/* Día de la Semana (Solo para Semanal o Catorcenal) */}
+                            {(formData.paymentFrequency === 'Semanal' || formData.paymentFrequency === 'Catorcenal') && (
+                                <>
+                                    <Text style={styles.label}>Día de la Semana pactado</Text>
+                                    <View style={styles.pickerContainer}>
+                                        {WEEK_DAYS.map(day => (
+                                            <TouchableOpacity
+                                                key={day.value}
+                                                style={[styles.dayOption, formData.diaSemanaPreferido === day.value && styles.dayOptionActive]}
+                                                onPress={() => setFormData({ ...formData, diaSemanaPreferido: day.value })}
+                                            >
+                                                <Text style={[styles.dayOptionText, formData.diaSemanaPreferido === day.value && styles.dayOptionTextActive]}>
+                                                    {day.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Día Preferido (Solo para Quincenal) */}
+                            {formData.paymentFrequency === 'Quincenal' && (
+                                <>
+                                    <Text style={styles.label}>Día Preferido (Quincenal): Día del mes (1-31)</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Ej: 15"
+                                        keyboardType="numeric"
+                                        maxLength={2}
+                                        value={formData.diaPagoPreferido}
+                                        onChangeText={(text) => {
+                                            // Solo números
+                                            const cleaned = text.replace(/[^0-9]/g, '');
+                                            setFormData({ ...formData, diaPagoPreferido: cleaned });
+                                        }}
+                                    />
+                                </>
+                            )}
 
                             {/* Fecha de Primer Pago */}
                             <Text style={styles.label}>Fecha de Primer Pago</Text>
@@ -306,7 +453,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20, 
         borderTopRightRadius: 20, 
         padding: 20, 
-        height: '80%', 
+        height: '92%', 
         width: '100%' 
     },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -314,8 +461,8 @@ const styles = StyleSheet.create({
     clientInfo: { fontSize: 14, color: '#64748b', marginBottom: 16, fontWeight: '600' },
     keyboardView: { flex: 1 },
     formScroll: { flex: 1 },
-    formScrollContent: { paddingBottom: 20 },
-    label: { fontSize: 14, fontWeight: '700', color: '#334155', marginTop: 16, marginBottom: 8 },
+    formScrollContent: { paddingBottom: 30 },
+    label: { fontSize: 13, fontWeight: '700', color: '#334155', marginTop: 14, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
     input: {
         backgroundColor: '#f8fafc',
         borderRadius: 10,
@@ -327,11 +474,11 @@ const styles = StyleSheet.create({
         borderColor: '#e2e8f0',
         minHeight: 48,
     },
-    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
     pickerOption: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 20,
         backgroundColor: '#f1f5f9',
         borderWidth: 1,
         borderColor: '#e2e8f0',
@@ -340,8 +487,66 @@ const styles = StyleSheet.create({
         backgroundColor: '#0ea5e9',
         borderColor: '#0ea5e9',
     },
-    pickerOptionText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+    pickerOptionText: { fontSize: 13, color: '#64748b', fontWeight: '700' },
     pickerOptionTextActive: { color: '#fff' },
+    
+    // Contenedor de píldoras para Tipo Préstamo
+    pillContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    pillOption: {
+        flex: 1,
+        minWidth: '45%',
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: '#f8fafc',
+        borderWidth: 1,
+        borderColor: '#cbd5e1',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pillOptionActive: {
+        backgroundColor: '#0f172a',
+        borderColor: '#0f172a',
+    },
+    pillOptionText: { fontSize: 13, color: '#475569', fontWeight: '600' },
+    pillOptionTextActive: { color: '#fff', fontWeight: '700' },
+
+    // Contenedor Grid para Tipo Destino
+    gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    gridOption: {
+        width: '48%',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        backgroundColor: '#f8fafc',
+        borderWidth: 1,
+        borderColor: '#cbd5e1',
+        justifyContent: 'center',
+    },
+    gridOptionActive: {
+        backgroundColor: '#0284c7',
+        borderColor: '#0284c7',
+    },
+    gridOptionText: { fontSize: 12, color: '#475569', fontWeight: '600' },
+    gridOptionTextActive: { color: '#fff', fontWeight: '700' },
+
+    // Opciones del Día de la semana
+    dayOption: {
+        flex: 1,
+        minWidth: '30%',
+        paddingVertical: 10,
+        borderRadius: 8,
+        backgroundColor: '#f1f5f9',
+        borderWidth: 1,
+        borderColor: '#cbd5e1',
+        alignItems: 'center',
+    },
+    dayOptionActive: {
+        backgroundColor: '#f59e0b',
+        borderColor: '#f59e0b',
+    },
+    dayOptionText: { fontSize: 13, color: '#475569', fontWeight: '600' },
+    dayOptionTextActive: { color: '#fff', fontWeight: '700' },
+
     dateButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -359,8 +564,8 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     buttonContainer: { 
-         marginTop: 16, 
-         paddingBottom: 10,
+         marginTop: 10, 
+         paddingBottom: Platform.OS === 'ios' ? 20 : 10,
     },
     submitButton: {
         flexDirection: 'row',
