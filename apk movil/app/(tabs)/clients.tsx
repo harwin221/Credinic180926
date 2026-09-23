@@ -225,22 +225,12 @@ export default function ClientsScreen() {
                                 </View>
                                 <View style={styles.cardInfo}>
                                     <Text style={styles.clientName}>{client.name}</Text>
-                                    <Text style={styles.clientSub}>{client.clientNumber} • {client.cedula}</Text>
+                                    <Text style={styles.clientSub}>{client.cedula}</Text>
                                     {client.phone ? (
                                         <Text style={styles.clientPhone}>
                                             <MaterialCommunityIcons name="phone" size={12} color="#94a3b8" /> {client.phone}
                                         </Text>
                                     ) : null}
-                                    <View style={styles.clientMetricsRow}>
-                                        <Text style={styles.clientMetricLabel}>
-                                            Saldo: <Text style={styles.clientMetricValueBlue}>C$ {(client.totalSaldo ?? 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
-                                        </Text>
-                                        <Text style={styles.clientMetricLabel}>
-                                            {'  •  '}Promedio: <Text style={((client.promedio_atraso ?? 0) > 2.5) ? styles.clientMetricValueRed : styles.clientMetricValueBlack}>
-                                                {client.promedio_atraso !== undefined ? Number(client.promedio_atraso).toFixed(1) : '0.0'}
-                                            </Text>
-                                        </Text>
-                                    </View>
                                     {(activeTab === 'Représtamos') && (
                                         <TouchableOpacity 
                                             style={styles.createCreditButton}
