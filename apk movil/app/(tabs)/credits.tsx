@@ -446,6 +446,11 @@ export default function CreditsScreen() {
                         remainingBalance: Math.max(0, selectedCredit.details.remainingBalance - paymentData.amount),
                     },
                 };
+                const updatedPaidToday = [paid, ...portfolio.paidToday.filter(x => x.id !== paid.id)];
+                AsyncStorage.setItem(getTodayKey(), JSON.stringify(updatedPaidToday)).catch(e =>
+                    console.error('[STORAGE] Error guardando pago:', e)
+                );
+
                 setPortfolio(prev => {
                     const removeFrom = (list: CreditItem[]) =>
                         list.filter(x => x.id !== selectedCredit!.id);
@@ -454,9 +459,14 @@ export default function CreditsScreen() {
                         overdue:   removeFrom(prev.overdue),
                         expired:   removeFrom(prev.expired),
                         upToDate:  removeFrom(prev.upToDate),
-                        paidToday: [paid, ...prev.paidToday],
+                        paidToday: [paid, ...prev.paidToday.filter(x => x.id !== paid.id)],
                     };
                 });
+
+                // Sincronizar en segundo plano con el servidor para tener los saldos y cuotas exactos
+                setTimeout(() => {
+                    fetchPortfolio();
+                }, 1000);
             } else {
                 AlertHelper.alert('Error', result.message || 'No se pudo registrar el abono');
             }
@@ -543,9 +553,9 @@ export default function CreditsScreen() {
                     ) : searchResults.length === 0 ? (
                         <Text style={styles.emptyText}>Sin resultados.</Text>
                     ) : (
-                        searchResults.map(item => (
+                        searchResults.map((item, idx) => (
                             <CreditCard
-                                key={`${item.id}`}
+                                key={`search_${item.id}_${idx}`}
                                 item={item}
                                 index={-1}
                                 tabColor="#64748b"
@@ -586,7 +596,7 @@ export default function CreditsScreen() {
                     ) : (
                         filteredList.map((item, index) => (
                             <CreditCard
-                                key={`${item.id}`}
+                                key={`${activeTab}_${item.id}_${index}`}
                                 item={item}
                                 index={index}
                                 tabColor={TAB_COLOR[activeTab]}
