@@ -184,7 +184,14 @@ export default function ClientDetailModal({ visible, onClose, credit, onApplyPay
                                 </View>
                                 {fullStatement.payments.map((payment: any, idx: number) => (
                                     <View key={idx} style={styles.tableRow}>
-                                        <Text style={[styles.cellText, styles.colId]}>{payment.transactionNumber || payment.receiptNumber || 'N/A'}</Text>
+                                        <View style={styles.colId}>
+                                            <Text style={styles.cellText}>{payment.transactionNumber || payment.receiptNumber || 'N/A'}</Text>
+                                            {Boolean(payment.is_cancelacion || (payment.tipo && payment.tipo.includes('Cancelación'))) && (
+                                                <View style={styles.cancelacionBadge}>
+                                                    <Text style={styles.cancelacionBadgeText}>Cancelación</Text>
+                                                </View>
+                                            )}
+                                        </View>
                                         <Text style={[styles.cellText, styles.colDateLarge]}>{formatDateTime(payment.paymentDate)}</Text>
                                         <Text style={[styles.cellText, styles.colAmount]}>{fmt(payment.principalApplied)}</Text>
                                         <Text style={[styles.cellText, styles.colAmount]}>{fmt(payment.interestApplied)}</Text>
@@ -285,5 +292,7 @@ const styles = StyleSheet.create({
     statLabel: { fontSize: 11, fontWeight: '700', color: '#64748b' },
     statValue: { fontSize: 11, fontWeight: '700', color: '#1e293b' },
     emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' },
+    cancelacionBadge: { backgroundColor: '#7c3aed', paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4, marginTop: 2, alignSelf: 'flex-start' },
+    cancelacionBadgeText: { color: '#ffffff', fontSize: 9, fontWeight: '800' },
 });
 

@@ -23,6 +23,9 @@ class abonosModel extends Model
             return 'Deducción';
         if ($this->tipo_abono == 2)
             return 'Dispensa';
+        if ($this->tipo_abono == 3)
+            return 'Cancelación';
+        return 'Ordinario';
     }
 
     public function prestamo()

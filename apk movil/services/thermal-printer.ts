@@ -135,7 +135,9 @@ class ThermalPrinterService {
             receiptText += '--------------------------------\n';
             receiptText += center('MONTO RECIBIDO') + '\n';
             receiptText += center('C$ ' + fmt(receipt.amountPaid)) + '\n';
-            receiptText += center('CONCEPTO: ABONO DE CREDITO') + '\n';
+            const isCancel = (receipt as any).is_cancelacion || ((receipt as any).concepto && (receipt as any).concepto.includes('CANCEL'));
+            const conceptStr = isCancel ? 'CONCEPTO: CANCELACION DE CREDITO' : ((receipt as any).concepto ? 'CONCEPTO: ' + (receipt as any).concepto.toUpperCase() : 'CONCEPTO: ABONO DE CREDITO');
+            receiptText += center(conceptStr) + '\n';
             receiptText += '--------------------------------\n';
             receiptText += leftRight('Saldo Anterior:', 'C$ ' + fmt(receipt.saldoAnterior)) + '\n';
             receiptText += leftRight('Nuevo Saldo:', 'C$ ' + fmt(receipt.nuevoSaldo)) + '\n';

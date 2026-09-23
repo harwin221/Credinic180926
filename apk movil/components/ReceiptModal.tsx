@@ -28,6 +28,9 @@ export interface ReceiptData {
     managedBy: string;
     sucursal: string;
     role: string;
+    concepto?: string;
+    is_cancelacion?: boolean;
+    tipo_abono?: number;
 }
 
 const fmt = (n: number) => n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -101,7 +104,11 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
                                 <Text style={styles.totalAmount}>C$ {fmt(receipt.amountPaid)}</Text>
                             </View>
 
-                            <Text style={styles.concept}>CONCEPTO: ABONO DE CRÉDITO</Text>
+                            <View style={[styles.conceptBadge, (receipt.is_cancelacion || (receipt.concepto && receipt.concepto.includes('CANCELACIÓN'))) && styles.conceptBadgeCancelacion]}>
+                                <Text style={[styles.concept, (receipt.is_cancelacion || (receipt.concepto && receipt.concepto.includes('CANCELACIÓN'))) && styles.conceptCancelacion]}>
+                                    CONCEPTO: {receipt.concepto || (receipt.is_cancelacion ? 'CANCELACIÓN DE CRÉDITO' : 'ABONO DE CRÉDITO')}
+                                </Text>
+                            </View>
 
                             <View style={styles.balanceBox}>
                                 <Row label="Saldo Anterior:" value={`C$ ${fmt(receipt.saldoAnterior)}`} />
@@ -173,7 +180,10 @@ const styles = StyleSheet.create({
     totalBox: { borderWidth: 2, borderColor: '#000', padding: 12, marginVertical: 12, alignItems: 'center', borderRadius: 4 },
     totalLabel: { fontSize: 11, color: '#475569', marginBottom: 4 },
     totalAmount: { fontSize: 24, fontWeight: '900', color: '#1e293b' },
-    concept: { textAlign: 'center', fontStyle: 'italic', fontSize: 11, color: '#64748b', marginBottom: 8, fontWeight: '700' },
+    conceptBadge: { backgroundColor: '#f1f5f9', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, marginBottom: 8, alignSelf: 'center' },
+    conceptBadgeCancelacion: { backgroundColor: '#ede9fe', borderWidth: 1, borderColor: '#c4b5fd' },
+    concept: { textAlign: 'center', fontStyle: 'italic', fontSize: 11, color: '#64748b', fontWeight: '700' },
+    conceptCancelacion: { color: '#6d28d9', fontWeight: '900', fontStyle: 'normal' },
     balanceBox: { backgroundColor: '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 8 },
     footerCenter: { alignItems: 'center', marginVertical: 10 },
     thanks: { textAlign: 'center', fontSize: 13, fontWeight: '700' },

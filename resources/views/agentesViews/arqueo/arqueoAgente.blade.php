@@ -341,20 +341,33 @@
                     <th>#</th>
                     <th>Consecutivo</th>
                     <th>Cliente</th>
+                    <th>Tipo</th>
                     <th>Capital</th>
                     <th>Interes</th>
                     <th>Total Abonado</th>
                 </tr>
                 <?php $suma = 0; ?>
                 @foreach($abonos as $ab)
-                    <tr>
+                    @php
+                        $esCancelacion = ($ab->tipo_abono == 3 || str_contains(strtolower($ab->referencia_transferencia ?? ''), 'cancelaci') || str_contains(strtolower($ab->tipo ?? ''), 'cancelaci'));
+                        $esExterno = !$esCancelacion && ($ab->prestamo->agente_id !== $ab->created_user_id);
+                    @endphp
+                    <tr @if($esCancelacion) style="background:#f5f3ff;" @elseif($esExterno) style="background:#fffbe6;" @endif>
                         <td>{{$loop->index+1}}</td>
                         <td>{{$ab->prestamo->consecutivo}}</td>
+                        <td>{{$ab->prestamo->cliente->full_name}}</td>
                         <td>
-                            {{$ab->prestamo->cliente->full_name}}
-                            @if($ab->prestamo->agente_id !== $ab->created_user_id)
-                                <span style="background:#ffc107;color:#000;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;">
+                            @if($esCancelacion)
+                                <span style="background:#7c3aed;color:#fff;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;">
+                                    Cancelación
+                                </span>
+                            @elseif($esExterno)
+                                <span style="background:#ffc107;color:#000;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;">
                                     Externo
+                                </span>
+                            @else
+                                <span style="background:#198754;color:#fff;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;">
+                                    Cartera
                                 </span>
                             @endif
                         </td>
@@ -364,8 +377,7 @@
                     </tr>
                 @endforeach
                 <tr style="background: lightgrey">
-                    <th colspan="4" style="text-align: right;margin-right: 10px">Total</th>
-                    <th></th>
+                    <th colspan="6" style="text-align: right;margin-right: 10px">Total</th>
                     <th>{{number_format($total_recuperado,2)}}</th>
                 </tr>
             </table>

@@ -787,6 +787,9 @@ class MobileApiController extends Controller
             'role'              => 'AGENTE DE COBRO',
             'abono_id'          => $abono->id,
             'prestamo_id'       => $abono->prestamo_id,
+            'tipo_abono'        => $abono->tipo_abono,
+            'is_cancelacion'    => ($abono->tipo_abono == 3 || str_contains(strtolower($abono->referencia_transferencia ?? ''), 'cancelaci')),
+            'concepto'          => ($abono->tipo_abono == 3 || str_contains(strtolower($abono->referencia_transferencia ?? ''), 'cancelaci')) ? 'CANCELACIÓN DE CRÉDITO' : 'ABONO DE CRÉDITO',
         ];
     }
 
@@ -1070,21 +1073,26 @@ class MobileApiController extends Controller
             // 2. Historial de Pagos / Abonos (idéntico a Estado de Cuenta / Abonos de la web)
             $paymentHistory = [];
             $hoy = \Carbon\Carbon::now()->format('Y-m-d');
-
             foreach ($p->abonos as $index => $a) {
                 $montoAbonado = (float)($a->total_abonado ?? ($a->total_efectivo + $a->total_tarjeta + $a->total_cheque + $a->total_transferencia));
                 $fechaAbono = substr($a->fecha_abono ?? $a->created_at, 0, 10);
-
+                $isCancelacion = ($a->tipo_abono == 3 || str_contains(strtolower($a->referencia_transferencia ?? ''), 'cancelaci'));
                 $paymentHistory[] = [
                     'id'                => $a->id,
                     'receiptNumber'     => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
                     'paymentDate'       => $fechaAbono,
                     'amount'            => $montoAbonado,
+                    'principalApplied'  => (float)($a->total_abonado_capital ?? 0),
+                    'interestApplied'   => (float)($a->total_abonado_interes ?? 0),
+                    'moraApplied'       => (float)($a->total_abonado_mora ?? 0),
                     'receivedBy'        => $a->user_create->full_name ?? ($a->user_create->nombres ?? 'Agente'),
                     'status'            => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
+                    'tipo'              => $isCancelacion ? 'Cancelación Crédito' : ($a->tipo ?? 'Ordinario'),
+                    'tipo_abono'        => $a->tipo_abono,
+                    'is_cancelacion'    => $isCancelacion,
+                    'referencia'        => $a->referencia_transferencia ?? '',
                 ];
             }
-
             // 3. Monto en Mora y Días de Atraso del Crédito Actual
             $cuotasVencidas = $p->cuotas->filter(function($c) use ($hoy) {
                 return $c->estado != 3 && substr($c->fecha_cuota, 0, 10) < $hoy;
@@ -1745,9 +1753,10 @@ class MobileApiController extends Controller
         ]);
 
         try {
+            DB::beginTransaction();
+
             $prestamoId = $request->creditId;
             $user = $request->user() ?? \App\Models\User::find($request->get('userId'));
-
             $prestamo = \App\Models\prestamosModel::find($prestamoId);
 
             if (!$prestamo) {
@@ -1769,11 +1778,85 @@ class MobileApiController extends Controller
             $prestamo->fecha_desembolso = date('Y-m-d');
             $prestamo->save();
 
+            // Auto-cancelar crédito(s) anterior(es) activo(s) del cliente si tiene saldo pendiente
+            $gestorCobradorId = $prestamo->agente_id ?? ($user ? $user->id : null);
+            $prestamosAnteriores = \App\Models\prestamosModel::where('user_id', $prestamo->user_id)
+                ->where('estado', 1)
+                ->where('desembolsado', 1)
+                ->where('id', '!=', $prestamo->id)
+                ->get();
+
+            foreach ($prestamosAnteriores as $pAnt) {
+                $cuotasPendientes = \App\Models\prestamoCuotasModel::where('prestamo_id', $pAnt->id)
+                    ->whereIn('estado', [1, 2])
+                    ->orderBy('numero_cuota', 'asc')
+                    ->get();
+
+                $totalSaldoPendiente = 0;
+                foreach ($cuotasPendientes as $cp) {
+                    $totalSaldoPendiente += (float)($cp->monto_pendiente_cuota > 0 ? $cp->monto_pendiente_cuota : $cp->monto_cuota);
+                }
+
+                if ($totalSaldoPendiente > 0 && count($cuotasPendientes) > 0) {
+                    $abono = new \App\Models\abonosModel();
+                    $abono->prestamo_id = $pAnt->id;
+                    $abono->fecha_abono = \Carbon\Carbon::now();
+                    $abono->tipo_abono = 3; // 3: Cancelación / Représtamo
+                    $abono->estado = 1;
+                    $abono->anulado_user_id = null;
+                    $abono->created_user_id = $gestorCobradorId;
+                    $abono->total_efectivo = $totalSaldoPendiente;
+                    $abono->total_tarjeta = 0;
+                    $abono->total_cheque = 0;
+                    $abono->total_transferencia = 0;
+                    $abono->referencia_tarjeta = '';
+                    $abono->referencia_cheque = '';
+                    $abono->referencia_transferencia = 'Cancelación Crédito #' . ($prestamo->consecutivo ?? $prestamo->id);
+                    $abono->save();
+
+                    foreach ($cuotasPendientes as $cuota) {
+                        $capitalPend = (float)($cuota->total_pendiente_capital_cuota ?? max(0, $cuota->monto_cuota - $cuota->monto_interes));
+                        $interesPend = (float)($cuota->total_pendiente_interes_cuota ?? $cuota->monto_interes);
+                        $moraPend    = (float)($cuota->total_pendiente_mora_cuota ?? $cuota->monto_mora ?? 0);
+                        $montoAbonoCuota = (float)($cuota->monto_pendiente_cuota > 0 ? $cuota->monto_pendiente_cuota : ($capitalPend + $interesPend + $moraPend));
+
+                        $abonoCuota = new \App\Models\prestamoCuotaAbonoModel();
+                        $abonoCuota->abono_id = $abono->id;
+                        $abonoCuota->prestamo_cuota_id = $cuota->id;
+                        $abonoCuota->monto_abono = $montoAbonoCuota;
+                        $abonoCuota->fecha_abono = \Carbon\Carbon::now();
+                        $abonoCuota->tipo_abono = 1;
+                        $abonoCuota->estado = 1;
+                        $abonoCuota->total_capital = $capitalPend;
+                        $abonoCuota->total_interes = $interesPend;
+                        $abonoCuota->total_mora = $moraPend;
+                        $abonoCuota->created_user_id = $gestorCobradorId;
+                        $abonoCuota->save();
+
+                        $cuota->monto_pendiente_cuota = 0;
+                        $cuota->total_pendiente_capital_cuota = 0;
+                        $cuota->total_pendiente_interes_cuota = 0;
+                        $cuota->total_pendiente_mora_cuota = 0;
+                        $cuota->estado = 3; // Pagada
+                        $cuota->save();
+                    }
+
+                    $pAnt->estado = 2; // Pagado / Cancelado
+                    $pAnt->save();
+                } else {
+                    $pAnt->estado = 2;
+                    $pAnt->save();
+                }
+            }
+
+            DB::commit();
+
             return response()->json([
                 'success' => true,
-                'message' => 'Préstamo desembolsado exitosamente.'
+                'message' => 'Préstamo desembolsado exitosamente y crédito anterior cancelado.'
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
                 'message' => 'Error al desembolsar préstamo: ' . $e->getMessage()

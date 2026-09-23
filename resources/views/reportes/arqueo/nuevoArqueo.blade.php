@@ -79,13 +79,20 @@
                 </tr>
                 <?php $suma = 0; ?>
                 @foreach($abonos as $ab)
-                    @php $esExterno = $ab->prestamo->agente_id !== $ab->created_user_id; @endphp
-                    <tr @if($esExterno) style="background:#fffbe6;" @endif>
+                    @php
+                        $esCancelacion = ($ab->tipo_abono == 3 || str_contains(strtolower($ab->referencia_transferencia ?? ''), 'cancelaci') || str_contains(strtolower($ab->tipo ?? ''), 'cancelaci'));
+                        $esExterno = !$esCancelacion && ($ab->prestamo->agente_id !== $ab->created_user_id);
+                    @endphp
+                    <tr @if($esCancelacion) style="background:#f5f3ff;" @elseif($esExterno) style="background:#fffbe6;" @endif>
                         <td>{{$loop->index+1}}</td>
                         <td>{{$ab->prestamo->consecutivo}}</td>
                         <td>{{$ab->prestamo->cliente->full_name}}</td>
                         <td>
-                            @if($esExterno)
+                            @if($esCancelacion)
+                                <span style="background:#7c3aed;color:#fff;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;">
+                                    Cancelación
+                                </span>
+                            @elseif($esExterno)
                                 <span style="background:#ffc107;color:#000;font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600;">
                                     Externo
                                 </span>
