@@ -1978,4 +1978,187 @@ class MobileApiController extends Controller
             'data'    => $results,
         ]);
     }
+
+    // ─── GET /api/mobile/mobile_credit_detail ──────────────────────────────────
+    public function creditDetail(Request $request)
+    {
+        $creditId = $request->get('creditId', $request->get('id', $request->get('prestamo_id')));
+        if (!$creditId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El ID del crédito es requerido.',
+            ], 400);
+        }
+
+        if (is_string($creditId) && !is_numeric($creditId)) {
+            $creditId = decode($creditId);
+        }
+
+        $prestamo = prestamosModel::with([
+            'cliente.departamento_municipio.departamento',
+            'userCreado',
+            'agente',
+            'cuotas' => function($cq) {
+                $cq->orderBy('numero_cuota', 'asc');
+            },
+            'abonos' => function($aq) {
+                $aq->where('estado', 1)->orderBy('id', 'asc');
+            }
+        ])->find($creditId);
+
+        if (!$prestamo) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se encontró el crédito.',
+            ], 404);
+        }
+
+        $cliente = $prestamo->cliente;
+        $hoy = Carbon::now()->format('Y-m-d');
+        $cuotas = $prestamo->cuotas;
+
+        // Cuotas pendientes
+        $cuotasPendientes = $cuotas->filter(function($c) {
+            return in_array($c->estado, [1, 2]);
+        });
+        $cuotasHoy = $cuotasPendientes->filter(function($c) use ($hoy) {
+            return substr($c->fecha_cuota, 0, 10) === $hoy;
+        });
+        $cuotasVencidas = $cuotasPendientes->filter(function($c) use ($hoy) {
+            return substr($c->fecha_cuota, 0, 10) < $hoy;
+        });
+
+        $dueTodayAmount = $cuotasHoy->sum(function($c) {
+            return (float)($c->monto_pendiente_cuota ?? $c->monto_cuota ?? 0);
+        });
+        $overdueAmount = $cuotasVencidas->sum(function($c) {
+            return (float)($c->monto_pendiente_cuota ?? $c->monto_cuota ?? 0);
+        });
+
+        $primeraCuotaVencida = $cuotasVencidas->sortBy('fecha_cuota')->first();
+        $lateDays = 0;
+        if ($primeraCuotaVencida) {
+            $lateDays = Carbon::parse(substr($primeraCuotaVencida->fecha_cuota, 0, 10))->diffInDays(Carbon::now());
+        }
+
+        // Plan de pagos detallado para el reporte / estado de cuenta
+        $saldoAnterior = (float)$prestamo->monto_financiado;
+        $installments = [];
+        $totalPlanCuota = 0;
+        $totalPlanMora = 0;
+        $totalPlanPagado = 0;
+
+        foreach ($cuotas as $c) {
+            $valorCuota = (float)$c->monto_cuota;
+            $nuevoSaldo = max(0, $saldoAnterior - $valorCuota);
+            $mora = (float)($c->monto_mora ?? 0);
+            $abonosCuota = $c->abonos()->where('estado', 1)->sum('monto_abono');
+            $statusStr = $c->estado == 3 ? 'PAGADA' : ($c->estado == 2 ? 'VENCIDA' : 'PENDIENTE');
+
+            $installments[] = [
+                'id'            => $c->id,
+                'number'        => $c->numero_cuota,
+                'dueDate'       => substr($c->fecha_cuota, 0, 10),
+                'principal'     => (float)($c->monto_cuota - $c->monto_interes),
+                'interest'      => (float)$c->monto_interes,
+                'quota'         => $valorCuota,
+                'amount'        => $valorCuota,
+                'saldoAnterior' => $saldoAnterior,
+                'balance'       => $nuevoSaldo,
+                'mora'          => $mora,
+                'paid'          => (float)$abonosCuota,
+                'status'        => $statusStr,
+            ];
+            $saldoAnterior = $nuevoSaldo;
+            $totalPlanCuota += $valorCuota;
+            $totalPlanMora += $mora;
+            $totalPlanPagado += (float)$abonosCuota;
+        }
+
+        // Historial de abonos
+        $payments = [];
+        $totalAbonosMonto = 0;
+        $totalAbonosCapital = 0;
+        $totalAbonosInteres = 0;
+        $totalAbonosMora = 0;
+
+        foreach ($prestamo->abonos as $a) {
+            $montoAbonado = (float)($a->total_abonado ?? ($a->total_efectivo + $a->total_tarjeta + $a->total_cheque + $a->total_transferencia));
+            $cap = (float)($a->total_abonado_capital ?? 0);
+            $int = (float)($a->total_abonado_interes ?? 0);
+            $mor = (float)($a->total_abonado_mora ?? 0);
+            $isCancelacion = ($a->tipo_abono == 3 || str_contains(strtolower($a->referencia_transferencia ?? ''), 'cancelaci'));
+
+            $payments[] = [
+                'id'             => $a->id,
+                'receiptNumber'  => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
+                'date'           => substr($a->fecha_abono ?? $a->created_at, 0, 10),
+                'amount'         => $montoAbonado,
+                'principal'      => $cap,
+                'interest'       => $int,
+                'mora'           => $mor,
+                'receivedBy'     => $a->user_create ? ($a->user_create->full_name ?? $a->user_create->nombres) : 'Gestor',
+                'status'         => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
+                'type'           => $isCancelacion ? 'Cancelación Crédito' : ($a->tipo ?? 'Ordinario'),
+                'tipo_abono'     => $a->tipo_abono,
+                'is_cancelacion' => $isCancelacion,
+                'referencia'     => $a->referencia_transferencia ?? '',
+            ];
+            $totalAbonosMonto += $montoAbonado;
+            $totalAbonosCapital += $cap;
+            $totalAbonosInteres += $int;
+            $totalAbonosMora += $mor;
+        }
+
+        $gestorName = $prestamo->userCreado ? ($prestamo->userCreado->full_name ?? $prestamo->userCreado->nombres) : ($prestamo->agente ? ($prestamo->agente->full_name ?? $prestamo->agente->nombres) : 'N/A');
+
+        $data = [
+            'id'                 => $prestamo->id,
+            'id_enc'             => $prestamo->id_enc,
+            'clientId'           => $cliente ? $cliente->id : null,
+            'clientName'         => $cliente ? ($cliente->full_name ?? trim($cliente->nombres . ' ' . $cliente->apellidos)) : 'N/A',
+            'clientCode'         => $cliente ? ($cliente->codigo_cliente ?? $cliente->cedula ?? (string)$cliente->id) : '',
+            'creditNumber'       => $prestamo->consecutivo ?? (string)$prestamo->id,
+            'totalAmount'        => (float)$prestamo->monto_prestamo,
+            'financedAmount'     => (float)$prestamo->monto_financiado,
+            'interestRate'       => (float)$prestamo->tasa_prestamo,
+            'paymentFrequency'   => $prestamo->forma_pago,
+            'deliveryDate'       => substr($prestamo->fecha_desembolso ?? $prestamo->fecha_prestamo, 0, 10),
+            'dueDate'            => substr($prestamo->fecha_ultimo_pago ?? ($cuotas->last()->fecha_cuota ?? ''), 0, 10),
+            'collectionsManager' => $gestorName,
+            'status'             => $prestamo->estado == 1 ? 'Activo' : ($prestamo->estado == 2 ? 'Pagado' : 'Cancelado'),
+            'moneda'             => $prestamo->moneda_prestamo ?? 1,
+            'details'            => [
+                'remainingBalance'  => (float)$prestamo->pendiente_abono,
+                'dueTodayAmount'    => (float)$dueTodayAmount,
+                'overdueAmount'     => (float)$overdueAmount,
+                'lateDays'          => (int)$lateDays,
+                'installmentAmount' => (float)$prestamo->monto_cuota,
+            ],
+            'fullStatement'      => [
+                'installments' => $installments,
+                'payments'     => $payments,
+                'totals'       => [
+                    'plan'   => [
+                        'cuota'   => $totalPlanCuota,
+                        'mora'    => $totalPlanMora,
+                        'pagado'  => $totalPlanPagado,
+                        'saldo'   => max(0, $totalPlanCuota - $totalPlanPagado),
+                    ],
+                    'abonos' => [
+                        'total'    => $totalAbonosMonto,
+                        'capital'  => $totalAbonosCapital,
+                        'interes'  => $totalAbonosInteres,
+                        'mora'     => $totalAbonosMora,
+                    ],
+                ],
+            ],
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ]);
+    }
+
 }

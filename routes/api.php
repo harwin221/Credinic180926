@@ -34,6 +34,9 @@ Route::prefix('mobile')->group(function () {
         Route::get('/mobile_clients',     [MobileApiController::class, 'misClientes']);
         Route::get('/cliente-detalle',    [MobileApiController::class, 'clienteDetalle']);
         Route::get('/mobile_client_detail', [MobileApiController::class, 'clienteDetalle']);
+        Route::get('/credit-detail',        [MobileApiController::class, 'creditDetail']);
+        Route::get('/mobile_credit_detail', [MobileApiController::class, 'creditDetail']);
+        Route::get('/credito-detalle',      [MobileApiController::class, 'creditDetail']);
         Route::post('/mobile_create_credit', [MobileApiController::class, 'crearSolicitud']);
         Route::post('/mobile_create_client', [MobileApiController::class, 'crearCliente']);
         Route::get('/departamentos-municipios', [MobileApiController::class, 'getDepartamentoMunicipios']);
