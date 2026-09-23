@@ -1,11 +1,27 @@
 import { ReceiptData } from '../components/ReceiptModal';
-import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
-
-// Importar la nueva librería
-import { BLEPrinter } from 'react-native-thermal-receipt-printer';
+import { Platform, PermissionsAndroid, Alert, Linking, NativeModules } from 'react-native';
 
 class ThermalPrinterService {
     private initialized = false;
+
+    /**
+     * Obtiene de forma segura la instancia de BLEPrinter sin crashear al inicio si el módulo nativo no está disponible
+     */
+    private getBLEPrinterInstance(): any {
+        try {
+            // Verificar si el módulo nativo existe en el entorno actual
+            if (!NativeModules.RNBLEPrinter) {
+                console.warn('[PRINT] El módulo nativo RNBLEPrinter no está disponible en este entorno (ej: Expo Go).');
+                return null;
+            }
+            const printerPkg = require('react-native-thermal-receipt-printer');
+            return printerPkg.BLEPrinter || printerPkg.default?.BLEPrinter || null;
+        } catch (error) {
+            console.warn('[PRINT] Error al cargar el módulo BLEPrinter:', error);
+            return null;
+        }
+    }
+
     /**
      * Inicializa la impresora BLE y solicita permisos si es necesario
      */
@@ -51,34 +67,43 @@ class ThermalPrinterService {
     /**
      * Inicializa la librería BLE
      */
-    async initPrinter(): Promise<void> {
-        if (this.initialized) return;
+    async initPrinter(): Promise<any> {
+        const BLEPrinter = this.getBLEPrinterInstance();
+        if (!BLEPrinter) {
+            throw new Error('La función de impresión Bluetooth requiere ejecutar la APK compilada con módulos nativos.');
+        }
+
+        if (this.initialized) return BLEPrinter;
+
         const hasPermissions = await this.requestBluetoothPermissions();
         if (!hasPermissions) throw new Error('Permisos de Bluetooth no concedidos');
         
         await BLEPrinter.init();
         this.initialized = true;
         console.log('[PRINT] BLE Printer initialized');
+        return BLEPrinter;
     }
 
     /**
      * Obtiene la lista de impresoras BLE disponibles
      */
     async findPrinters(): Promise<any[]> {
-        await this.initPrinter();
-        
         try {
+            const BLEPrinter = await this.initPrinter();
+            if (!BLEPrinter) return [];
+
             console.log('[PRINT] Buscando impresoras BLE...');
             const devices = await BLEPrinter.getDeviceList();
             
-            return devices.map((d: any) => ({
+            return (devices || []).map((d: any) => ({
                 name: d.device_name || 'Impresora BT',
-                address: d.inner_mac_address, // Usar inner_mac_address
+                address: d.inner_mac_address,
                 info: 'BLE',
                 isNative: true
             }));
-        } catch (error) {
+        } catch (error: any) {
             console.error('[PRINT] Error listando impresoras:', error);
+            Alert.alert('Impresora Bluetooth', error.message || 'No se pudieron buscar impresoras Bluetooth.');
             return [];
         }
     }
@@ -87,13 +112,16 @@ class ThermalPrinterService {
      * Imprime un recibo usando BLE
      */
     async printReceipt(printerAddress: string, receipt: ReceiptData): Promise<void> {
-        await this.initPrinter();
-
         try {
+            const BLEPrinter = await this.initPrinter();
+            if (!BLEPrinter) {
+                throw new Error('Módulo de impresora térmica no disponible en este dispositivo.');
+            }
+
             console.log('[PRINT] Conectando a:', printerAddress);
             await BLEPrinter.connectPrinter(printerAddress);
 
-            const fmt = (n: number) => n.toLocaleString('es-NI', { 
+            const fmt = (n: number) => (n || 0).toLocaleString('es-NI', { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
             }).replace(/\xA0/g, ' ');
@@ -117,17 +145,17 @@ class ThermalPrinterService {
             receiptText += center('ESTADO DE CUENTA / RECIBO') + '\n';
             receiptText += center('COPIA: CLIENTE') + '\n';
             receiptText += '--------------------------------\n';
-            receiptText += leftRight('No. Recibo:', receipt.transactionNumber) + '\n';
-            receiptText += leftRight('No. Credito:', receipt.creditNumber) + '\n';
-            receiptText += leftRight('Fecha Pago:', receipt.paymentDate) + '\n';
+            receiptText += leftRight('No. Recibo:', receipt.transactionNumber || '') + '\n';
+            receiptText += leftRight('No. Credito:', receipt.creditNumber || '') + '\n';
+            receiptText += leftRight('Fecha Pago:', receipt.paymentDate || '') + '\n';
             receiptText += '--------------------------------\n';
             receiptText += 'CLIENTE:\n';
-            receiptText += receipt.clientName.toUpperCase() + '\n';
-            receiptText += leftRight('CODIGO:', receipt.clientCode) + '\n';
+            receiptText += (receipt.clientName || '').toUpperCase() + '\n';
+            receiptText += leftRight('CODIGO:', receipt.clientCode || '') + '\n';
             receiptText += '--------------------------------\n';
             receiptText += leftRight('Cuota del Dia:', 'C$ ' + fmt(receipt.cuotaDelDia)) + '\n';
             receiptText += leftRight('Mora / Atraso:', 'C$ ' + fmt(receipt.montoAtrasado)) + '\n';
-            receiptText += leftRight('Dias Mora:', receipt.diasMora.toString()) + '\n';
+            receiptText += leftRight('Dias Mora:', (receipt.diasMora ?? 0).toString()) + '\n';
             receiptText += '--------------------------------\n';
             receiptText += leftRight('Total a pagar:', 'C$ ' + fmt(receipt.totalAPagar)) + '\n';
             receiptText += '--------------------------------\n';
@@ -135,9 +163,11 @@ class ThermalPrinterService {
             receiptText += '--------------------------------\n';
             receiptText += center('MONTO RECIBIDO') + '\n';
             receiptText += center('C$ ' + fmt(receipt.amountPaid)) + '\n';
+            
             const isCancel = (receipt as any).is_cancelacion || ((receipt as any).concepto && (receipt as any).concepto.includes('CANCEL'));
             const conceptStr = isCancel ? 'CONCEPTO: CANCELACION DE CREDITO' : ((receipt as any).concepto ? 'CONCEPTO: ' + (receipt as any).concepto.toUpperCase() : 'CONCEPTO: ABONO DE CREDITO');
             receiptText += center(conceptStr) + '\n';
+            
             receiptText += '--------------------------------\n';
             receiptText += leftRight('Saldo Anterior:', 'C$ ' + fmt(receipt.saldoAnterior)) + '\n';
             receiptText += leftRight('Nuevo Saldo:', 'C$ ' + fmt(receipt.nuevoSaldo)) + '\n';
@@ -146,20 +176,18 @@ class ThermalPrinterService {
             receiptText += center('PROHIBIDO EL PAGO SIN RECIBO') + '\n';
             receiptText += center('CONSERVE ESTE DOCUMENTO') + '\n';
             receiptText += center('__________________________') + '\n';
-            receiptText += center(receipt.sucursal.toUpperCase()) + '\n';
-            receiptText += center(receipt.managedBy.toUpperCase()) + '\n';
-            receiptText += center(receipt.role.toUpperCase());
+            receiptText += center((receipt.sucursal || '').toUpperCase()) + '\n';
+            receiptText += center((receipt.managedBy || '').toUpperCase()) + '\n';
+            receiptText += center((receipt.role || '').toUpperCase());
 
             // Comando de corte para detener el papel
             receiptText += '\x1b\x69';
 
             await BLEPrinter.printText(receiptText);
-
             console.log('[PRINT] Impresión finalizada.');
-
         } catch (error: any) {
             console.error('[PRINT] Error de impresión:', error);
-            throw new Error('Error de conexión con la impresora. Verifica que esté encendida y cerca.');
+            throw new Error(error.message || 'Error de conexión con la impresora. Verifica que esté encendida y cerca.');
         }
     }
 }
