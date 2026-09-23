@@ -963,45 +963,44 @@ class prestamosController extends Controller
             $cuota->estado = 1;
             $cuota->created_user_id = userLogeado()->id;
 
-            $fechaReal = $fechaReferencia->copy();
-
             if ($formaPago === "1") {
-                // DIARIO: Solo Lun-Vie
-                while ($fechaReal->dayOfWeek === 0 || $fechaReal->dayOfWeek === 6 || in_array($fechaReal->toDateString(), $feriados)) {
-                    $fechaReal->addDay();
+                // DIARIO: Solo Lun-Vie (días hábiles consecutivos sin repetir fechas)
+                while ($fechaReferencia->dayOfWeek === 0 || $fechaReferencia->dayOfWeek === 6 || in_array($fechaReferencia->toDateString(), $feriados)) {
+                    $fechaReferencia->addDay();
                 }
+                $cuota->fecha_cuota = $fechaReferencia->toDateString();
+                $cuota->save();
+
+                // Para la siguiente cuota, avanzar al siguiente día calendario (el while saltará fines de semana/feriados)
+                $fechaReferencia->addDay();
             } else {
-                // OTROS: Salta Dom y Feriados
+                // OTRAS FRECUENCIAS: Salta Dom y Feriados
+                $fechaReal = $fechaReferencia->copy();
                 while ($fechaReal->dayOfWeek === 0 || in_array($fechaReal->toDateString(), $feriados)) {
                     $fechaReal->addDay();
                 }
-            }
 
-            $cuota->fecha_cuota = $fechaReal->toDateString();
-            $cuota->save();
+                $cuota->fecha_cuota = $fechaReal->toDateString();
+                $cuota->save();
 
-            // Sincronizar la fecha de referencia con la fecha real asignada
-            // Comentado para evitar el efecto arrastre de feriados y domingos.
-            //  = ->copy();
-
-            // 6. Mover REFERENCIA
-            if ($formaPago === "3" && $diasPreferidosQuincenal > 0) {
-                // Quincenal
-                if ($fechaReferencia->day == $diaInicialOriginal) {
-                    $fechaReferencia->day = $diasPreferidosQuincenal;
-                    if ($diasPreferidosQuincenal < $diaInicialOriginal) {
-                        $fechaReferencia->addMonth();
+                // 6. Mover REFERENCIA
+                if ($formaPago === "3" && $diasPreferidosQuincenal > 0) {
+                    // Quincenal
+                    if ($fechaReferencia->day == $diaInicialOriginal) {
+                        $fechaReferencia->day = $diasPreferidosQuincenal;
+                        if ($diasPreferidosQuincenal < $diaInicialOriginal) {
+                            $fechaReferencia->addMonth();
+                        }
+                    } else {
+                        $fechaReferencia->day = $diaInicialOriginal;
+                        if ($diaInicialOriginal < $diasPreferidosQuincenal) {
+                            $fechaReferencia->addMonth();
+                        }
                     }
                 } else {
-                    $fechaReferencia->day = $diaInicialOriginal;
-                    if ($diaInicialOriginal < $diasPreferidosQuincenal) {
-                        $fechaReferencia->addMonth();
-                    }
+                    $fechaReferencia->addDays($banderaAumentar);
                 }
-            } else {
-                $fechaReferencia->addDays($banderaAumentar);
             }
-        }
     }
 
 }
