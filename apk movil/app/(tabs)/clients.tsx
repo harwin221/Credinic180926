@@ -162,8 +162,8 @@ export default function ClientsScreen() {
         <>
             <SafeAreaView style={styles.container}>
                 <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-                {/* Search Header Row with Add Client Button */}
-                <View style={styles.headerRow}>
+                {/* Search Container */}
+                <View style={styles.searchContainer}>
                     <View style={styles.searchWrapper}>
                         <MaterialCommunityIcons name="magnify" size={20} color="#94a3b8" style={styles.searchIcon} />
                         <TextInput
@@ -179,14 +179,17 @@ export default function ClientsScreen() {
                             </TouchableOpacity>
                         )}
                     </View>
-                    <TouchableOpacity 
-                        style={styles.addClientButton}
-                        onPress={() => setShowClientForm(true)}
-                        activeOpacity={0.8}
-                    >
-                        <MaterialCommunityIcons name="account-plus" size={22} color="#fff" />
-                    </TouchableOpacity>
                 </View>
+
+                {/* Botón de Registrar Cliente Nuevo debajo del Buscador */}
+                <TouchableOpacity
+                    style={styles.registerBarButton}
+                    onPress={() => setShowClientForm(true)}
+                    activeOpacity={0.7}
+                >
+                    <MaterialCommunityIcons name="account-plus" size={18} color="#0ea5e9" />
+                    <Text style={styles.registerBarButtonText}>REGISTRAR NUEVO CLIENTE</Text>
+                </TouchableOpacity>
 
                 {/* Tabs */}
                 <View style={styles.tabsWrapper}>
@@ -253,15 +256,6 @@ export default function ClientsScreen() {
                     </ScrollView>
                 )}
             
-            {/* Botón Flotante Llamativo para Registrar Nuevo Cliente */}
-            <TouchableOpacity
-                style={styles.fabButton}
-                onPress={() => setShowClientForm(true)}
-                activeOpacity={0.8}
-            >
-                <MaterialCommunityIcons name="account-plus" size={24} color="#fff" />
-                <Text style={styles.fabButtonText}>REGISTRAR CLIENTE</Text>
-            </TouchableOpacity>
 </SafeAreaView>
 
             {/* Modal detalle del cliente */}
@@ -537,27 +531,25 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
-    fabButton: {
-        position: 'absolute',
-        bottom: 90, // Un poco por encima de la barra de tabs (generalmente de 60-80px) para que no la obstruya
-        right: 20,
-        backgroundColor: '#10b981', // Verde esmeralda súper llamativo
-        paddingVertical: 12,
-        paddingHorizontal: 18,
-        borderRadius: 25,
+    searchContainer: {
+        backgroundColor: '#fff',
+        paddingTop: 5,
+    },
+    registerBarButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#eff6ff', // Celeste pastel muy profesional
+        borderWidth: 1,
+        borderColor: '#bfdbfe',
+        borderRadius: 10,
+        marginHorizontal: 20,
+        paddingVertical: 10,
+        marginBottom: 8,
         gap: 8,
-        elevation: 8,
-        shadowColor: '#10b981',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 5,
-        zIndex: 9999, // Super alta prioridad para que flote por encima de todo
     },
-    fabButtonText: {
-        color: '#fff',
+    registerBarButtonText: {
+        color: '#0ea5e9', // Azul Credinic
         fontSize: 13,
         fontWeight: 'bold',
         letterSpacing: 0.5,
