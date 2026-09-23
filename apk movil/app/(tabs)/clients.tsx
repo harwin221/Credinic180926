@@ -252,7 +252,17 @@ export default function ClientsScreen() {
                         )}
                     </ScrollView>
                 )}
-            </SafeAreaView>
+            
+            {/* Botón Flotante Llamativo para Registrar Nuevo Cliente */}
+            <TouchableOpacity
+                style={styles.fabButton}
+                onPress={() => setShowClientForm(true)}
+                activeOpacity={0.8}
+            >
+                <MaterialCommunityIcons name="account-plus" size={24} color="#fff" />
+                <Text style={styles.fabButtonText}>REGISTRAR CLIENTE</Text>
+            </TouchableOpacity>
+</SafeAreaView>
 
             {/* Modal detalle del cliente */}
             <Modal visible={!!selectedClient} animationType="slide" transparent onRequestClose={() => { setSelectedClient(null); setClientDetail(null); }}>
