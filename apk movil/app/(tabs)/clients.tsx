@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, Modal, StatusBar, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
@@ -50,7 +51,7 @@ export default function ClientsScreen() {
         const session = await sessionService.getSession();
         if (!session?.id) return;
         try {
-            const resp = await apiFetch(`${API_ENDPOINTS.mobile_clients}?userId=${session.id}&search=${encodeURIComponent(searchTerm)}`);
+            const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/mis-clientes?buscar=${encodeURIComponent(searchTerm)}`);
             const result = await resp.json();
             if (result.success) setData(result.data);
         } catch (e) {
@@ -61,7 +62,11 @@ export default function ClientsScreen() {
         }
     }, []);
 
-    useEffect(() => { fetchClients(); }, [fetchClients]);
+    useFocusEffect(
+        useCallback(() => {
+            fetchClients(search);
+        }, [fetchClients, search])
+    );
 
     const onRefresh = () => { setRefreshing(true); fetchClients(search); };
 
@@ -77,7 +82,7 @@ export default function ClientsScreen() {
         setLoadingDetail(true);
         setActiveDetailTab('detalles'); // Reset al tab de detalles
         try {
-            const resp = await apiFetch(`${API_ENDPOINTS.mobile_client_detail}?clientId=${client.id}`);
+            const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/cliente-detalle?clientId=${client.id}`);
             
             // Verificar si la respuesta es JSON válido
             const contentType = resp.headers.get('content-type');
@@ -104,7 +109,7 @@ export default function ClientsScreen() {
     const handleCreateCredit = async (client: any) => {
         // Verificar si el cliente ya tiene una solicitud pendiente o aprobada
         try {
-            const resp = await apiFetch(`${API_ENDPOINTS.mobile_client_detail}?clientId=${client.id}`);
+            const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/cliente-detalle?clientId=${client.id}`);
             const result = await resp.json();
             
             if (result.success && result.data.credits) {

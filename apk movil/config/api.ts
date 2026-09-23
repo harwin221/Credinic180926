@@ -19,6 +19,7 @@ export const API_BASE_URL = 'http://192.168.0.13:8000';
 export const API_ENDPOINTS = {
     base: API_BASE_URL,
     mobile_login: `${API_BASE_URL}/api/mobile/login`,
+    mobile_external_clients: `${API_BASE_URL}/api/mobile/clientes-externos`,
     mobile_clients: `${API_BASE_URL}/api/mobile/mobile_clients`,
     mobile_client_detail: `${API_BASE_URL}/api/mobile/mobile_client_detail`,
     mobile_credit_detail: `${API_BASE_URL}/api/mobile/mobile_credit_detail`,

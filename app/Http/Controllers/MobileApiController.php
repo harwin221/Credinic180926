@@ -650,4 +650,273 @@ class MobileApiController extends Controller
             'prestamo_id'       => $abono->prestamo_id,
         ];
     }
+
+    // ─── GET /api/mobile/clientes-externos ──────────────────────────────────────
+    // Búsqueda de clientes con préstamos activos que NO pertenecen a la cartera del agente
+    public function clientesExternos(Request $request)
+    {
+        $agente = $request->user();
+        $buscar = trim($request->get('buscar', ''));
+
+        if (strlen($buscar) < 2) {
+            return response()->json([
+                'success' => true,
+                'clientes' => []
+            ]);
+        }
+
+        // IDs de clientes que ya pertenecen a la cartera del agente (para excluirlos)
+        $idsCarteraPropia = prestamosModel::where('agente_id', $agente->id)
+            ->whereNull('fecha_clasificacion')
+            ->where('estado', 1)
+            ->where('desembolsado', 1)
+            ->pluck('user_id')
+            ->toArray();
+
+        $prestamos = prestamosModel::with([
+                'cliente', 
+                'cliente.departamento_municipio.departamento',
+                'cuotas',
+                'abonos' => function($q) { $q->where('estado', 1)->orderBy('id', 'desc'); }
+            ])
+            ->whereNull('fecha_clasificacion')
+            ->where('estado', 1)
+            ->where('desembolsado', 1)
+            ->where('agente_id', '!=', $agente->id)
+            ->whereNotIn('user_id', $idsCarteraPropia)
+            ->whereHas('cliente', function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('nombres', 'like', '%' . $buscar . '%')
+                        ->orWhere('apellidos', 'like', '%' . $buscar . '%')
+                        ->orWhere('cedula', 'like', '%' . $buscar . '%');
+                });
+            })
+            ->limit(25)
+            ->get();
+
+        $hoy = \Carbon\Carbon::now()->format('Y-m-d');
+        $lista = [];
+
+        foreach ($prestamos as $prestamo) {
+            $cliente = $prestamo->cliente;
+            if (!$cliente) continue;
+
+            $cuotas = $prestamo->cuotas->map(function ($c) {
+                return [
+                    'id'                    => $c->id,
+                    'id_enc'                => encode($c->id),
+                    'numero_cuota'          => $c->numero_cuota,
+                    'fecha_cuota'           => $c->fecha_cuota,
+                    'monto_cuota'           => (float)$c->monto_cuota,
+                    'monto_pendiente_cuota' => (float)$c->monto_pendiente_cuota,
+                    'estado'                => $c->estado,
+                ];
+            })->values()->toArray();
+
+            $cuotaDelDia = $prestamo->cuotas->filter(function($c) use ($hoy) {
+                return substr($c->fecha_cuota ?? '', 0, 10) === $hoy && $c->estado != 3;
+            })->first();
+
+            $cuotaNum = $cuotaDelDia ? $cuotaDelDia->numero_cuota : ($prestamo->cuotas->where('estado', '!=', 3)->first()->numero_cuota ?? 1);
+            $cuotaMonto = $cuotaDelDia ? (float)$cuotaDelDia->monto_pendiente_cuota : (float)($prestamo->cuotas->where('estado', '!=', 3)->first()->monto_pendiente_cuota ?? 0);
+
+            $lista[] = [
+                'id'           => $prestamo->id,
+                'id_enc'       => $prestamo->id_enc,
+                'creditNumber' => (string)($prestamo->consecutivo ?? $prestamo->id),
+                'clientId'     => $cliente->id,
+                'clientName'   => $cliente->full_name ?? trim($cliente->nombres . ' ' . $cliente->apellidos),
+                'clientCode'   => $cliente->cedula ?? (string)$cliente->id,
+                'clientAddress'=> $cliente->direccion ?? '',
+                'cuotaNumero'  => $cuotaNum,
+                'es_externo'   => true,
+                'agente_id'    => $prestamo->agente_id,
+                'details'      => [
+                    'dueTodayAmount'   => $cuotaMonto,
+                    'overdueAmount'    => 0,
+                    'remainingBalance' => (float)$prestamo->pendiente_abono,
+                    'lateDays'         => 0,
+                    'diasVencido'      => 0,
+                    'paidToday'        => 0,
+                ],
+                'prestamo'     => [
+                    'id'              => $prestamo->id,
+                    'id_enc'          => $prestamo->id_enc,
+                    'consecutivo'     => $prestamo->consecutivo,
+                    'monto'           => (float)$prestamo->monto,
+                    'pendiente_abono' => (float)$prestamo->pendiente_abono,
+                    'moneda'          => $prestamo->moneda_prestamo ?? 1,
+                    'cuotas'          => $cuotas,
+                ]
+            ];
+        }
+
+        return response()->json([
+            'success'  => true,
+            'clientes' => $lista,
+        ]);
+    }
+
+    // ─── GET /api/mobile/mis-clientes ──────────────────────────────────────────
+    // Listado de clientes asignados a este agente ordenados alfabéticamente (idéntico a la web)
+    public function misClientes(Request $request)
+    {
+        $agente = $request->user();
+        $buscar = trim($request->get('search', $request->get('buscar', '')));
+
+        $clientes = User::join('prestamos as P', 'users.id', 'P.user_id')
+            ->when($buscar, function ($query) use ($buscar) {
+                $query->where(function ($q) use ($buscar) {
+                    $q->where('nombres', 'like', '%' . $buscar . '%')
+                      ->orWhere('apellidos', 'like', '%' . $buscar . '%')
+                      ->orWhere('cedula', 'like', '%' . $buscar . '%');
+                });
+            })
+            ->where('P.desembolsado', 1)
+            ->whereNotIn('P.estado', [2, 4]) // excluir pagados y anulados
+            ->where('P.agente_id', $agente->id)
+            ->whereNull('P.fecha_clasificacion')
+            ->select('users.*')
+            ->distinct()
+            ->orderBy('users.nombres', 'asc')
+            ->orderBy('users.apellidos', 'asc')
+            ->get();
+
+        $all = [];
+        $reloan = [];
+        $renewal = [];
+
+        foreach ($clientes as $c) {
+            $prestamosActivos = prestamosModel::where('user_id', $c->id)
+                ->where('agente_id', $agente->id)
+                ->where('estado', 1)
+                ->where('desembolsado', 1)
+                ->whereNull('fecha_clasificacion')
+                ->get();
+
+            $totalSaldo = $prestamosActivos->sum('pendiente_abono');
+            $primerPrestamo = $prestamosActivos->first();
+
+            $clientData = [
+                'id'            => $c->id,
+                'id_enc'        => $c->id_enc,
+                'name'          => $c->full_name ?? trim($c->nombres . ' ' . $c->apellidos),
+                'clientNumber'  => $c->codigo_cliente ?? (string)$c->id,
+                'cedula'        => $c->cedula ?? '',
+                'phone'         => $c->telefono1 ? ($c->telefono1 . ($c->telefono2 ? ' / ' . $c->telefono2 : '')) : ($c->telefono2 ?? ''),
+                'address'       => $c->direccion ?? '',
+                'municipio'     => ($c->departamento_municipio && $c->departamento_municipio->departamento) 
+                                    ? ($c->departamento_municipio->nombre . ', ' . $c->departamento_municipio->departamento->nombre) 
+                                    : '',
+                'totalSaldo'    => (float)$totalSaldo,
+                'activeCredits' => $prestamosActivos->count(),
+                'creditNumber'  => $primerPrestamo ? ($primerPrestamo->consecutivo ?? $primerPrestamo->id) : '',
+            ];
+
+            $all[] = $clientData;
+
+            // Clasificación de Représtamo o Renovación según porcentaje pagado del préstamo
+            if ($primerPrestamo && $primerPrestamo->monto > 0) {
+                $pagado = max(0, $primerPrestamo->monto - $primerPrestamo->pendiente_abono);
+                $pctPagado = ($pagado / $primerPrestamo->monto) * 100;
+                if ($pctPagado >= 70 && $pctPagado < 100) {
+                    $reloan[] = $clientData;
+                } elseif ($pctPagado >= 90) {
+                    $renewal[] = $clientData;
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'all'     => $all,
+                'reloan'  => $reloan,
+                'renewal' => $renewal,
+            ],
+        ]);
+    }
+
+    // ─── GET /api/mobile/cliente-detalle ───────────────────────────────────────
+    // Detalle completo del cliente, sus préstamos, plan de pagos e historial
+    public function clienteDetalle(Request $request)
+    {
+        $clientId = $request->get('clientId', $request->get('id'));
+        if (!$clientId) {
+            return response()->json(['success' => false, 'message' => 'ID de cliente requerido'], 400);
+        }
+
+        $cliente = User::with(['departamento_municipio.departamento'])->find($clientId);
+        if (!$cliente) {
+            return response()->json(['success' => false, 'message' => 'Cliente no encontrado'], 404);
+        }
+
+        $prestamos = prestamosModel::with([
+                'cuotas' => function($q) { $q->orderBy('numero_cuota', 'asc'); },
+                'abonos' => function($q) { $q->where('estado', 1)->orderBy('id', 'desc'); }
+            ])
+            ->where('user_id', $cliente->id)
+            ->whereNull('fecha_clasificacion')
+            ->where('desembolsado', 1)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $creditsData = [];
+        foreach ($prestamos as $p) {
+            $paymentPlan = $p->cuotas->map(function($c) {
+                return [
+                    'id'            => $c->id,
+                    'paymentNumber' => $c->numero_cuota,
+                    'paymentDate'   => $c->fecha_cuota,
+                    'principal'     => (float)($c->capital ?? 0),
+                    'interest'      => (float)($c->interes ?? 0),
+                    'amount'        => (float)$c->monto_cuota,
+                    'balance'       => (float)$c->monto_pendiente_cuota,
+                    'status'        => $c->estado == 3 ? 'PAGADO' : ($c->estado == 2 ? 'PARCIAL' : 'PENDIENTE'),
+                ];
+            })->values()->toArray();
+
+            $paymentHistory = $p->abonos->map(function($a) {
+                return [
+                    'id'            => $a->id,
+                    'receiptNumber' => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
+                    'paymentDate'   => $a->fecha_abono ?? $a->created_at,
+                    'amount'        => (float)$a->total_abonado,
+                    'status'        => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
+                ];
+            })->values()->toArray();
+
+            $creditsData[] = [
+                'id'              => $p->id,
+                'creditNumber'    => (string)($p->consecutivo ?? $p->id),
+                'amount'          => (float)$p->monto,
+                'remainingBalance'=> (float)$p->pendiente_abono,
+                'interestRate'    => (float)($p->interes ?? 0),
+                'term'            => (string)($p->plazo ?? ''),
+                'status'          => $p->estado == 1 ? 'Active' : ($p->estado == 2 ? 'Paid' : 'Cancelled'),
+                'startDate'       => $p->fecha_desembolso ?? $p->created_at,
+                'paymentPlan'     => $paymentPlan,
+                'paymentHistory'  => $paymentHistory,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'client' => [
+                    'id'           => $cliente->id,
+                    'name'         => $cliente->full_name ?? trim($cliente->nombres . ' ' . $cliente->apellidos),
+                    'clientNumber' => $cliente->codigo_cliente ?? (string)$cliente->id,
+                    'cedula'       => $cliente->cedula ?? '',
+                    'phone'        => $cliente->telefono1 ? ($cliente->telefono1 . ($cliente->telefono2 ? ' / ' . $cliente->telefono2 : '')) : ($cliente->telefono2 ?? ''),
+                    'address'      => $cliente->direccion ?? '',
+                    'neighborhood' => $cliente->barrio ?? '',
+                    'municipality' => $cliente->departamento_municipio->nombre ?? '',
+                    'department'   => $cliente->departamento_municipio->departamento->nombre ?? '',
+                ],
+                'credits' => $creditsData,
+            ]
+        ]);
+    }
+
 }

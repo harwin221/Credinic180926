@@ -204,6 +204,8 @@ export default function CreditsScreen() {
     const [receiptData, setReceiptData]           = useState<ReceiptData | null>(null);
     const [isReceiptVisible, setIsReceiptVisible] = useState(false);
     const [searchResults, setSearchResults]       = useState<CreditItem[]>([]);
+    const [externalResults, setExternalResults]   = useState<CreditItem[]>([]);
+    const [isSearchingExternal, setIsSearchingExternal] = useState(false);
     const [expandedCreditId, setExpandedCreditId] = useState<number | null>(null);
     const [isReprinting, setIsReprinting]         = useState(false);
 
@@ -290,20 +292,45 @@ export default function CreditsScreen() {
         fetchPortfolio();
     };
 
-    // ─── Búsqueda local en toda la cartera ────────────────────────────────────
+    // ─── Búsqueda en Cartera Local y Clientes Externos (igual que en la web) ──
     useEffect(() => {
-        if (!isSearchActive || searchQuery.length < 2) {
+        if (!isSearchActive || searchQuery.trim().length < 2) {
             setSearchResults([]);
+            setExternalResults([]);
+            setIsSearchingExternal(false);
             return;
         }
-        const q = searchQuery.toLowerCase();
-        setSearchResults(
-            allItems.filter(i =>
-                i.clientName.toLowerCase().includes(q) ||
-                i.clientCode.toLowerCase().includes(q) ||
-                String(i.creditNumber).includes(q)
-            )
+
+        const q = searchQuery.trim().toLowerCase();
+        // 1. Filtrar en la cartera propia
+        const localMatches = allItems.filter(i =>
+            i.clientName.toLowerCase().includes(q) ||
+            i.clientCode.toLowerCase().includes(q) ||
+            String(i.creditNumber).includes(q)
         );
+        setSearchResults(localMatches);
+
+        // 2. Buscar clientes externos en el servidor con debounce de 350ms
+        setIsSearchingExternal(true);
+        const timer = setTimeout(async () => {
+            try {
+                const endpoint = `${API_ENDPOINTS.base}/api/mobile/clientes-externos?buscar=${encodeURIComponent(searchQuery.trim())}`;
+                const resp = await apiFetch(endpoint);
+                const result = await resp.json();
+                if (result.success && Array.isArray(result.clientes)) {
+                    setExternalResults(result.clientes);
+                } else {
+                    setExternalResults([]);
+                }
+            } catch (err) {
+                console.error('[BUSQUEDA_EXTERNA] Error:', err);
+                setExternalResults([]);
+            } finally {
+                setIsSearchingExternal(false);
+            }
+        }, 350);
+
+        return () => clearTimeout(timer);
     }, [searchQuery, isSearchActive, allItems]);
 
 
@@ -514,14 +541,14 @@ export default function CreditsScreen() {
                 {isSearchActive ? (
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Buscar cliente, cédula o # crédito..."
+                        placeholder="Buscar cliente propio o externo (otra cartera)..."
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         autoFocus
                     />
                 ) : (
                     <TouchableOpacity style={{ flex: 1 }} onPress={() => setIsSearchActive(true)}>
-                        <Text style={styles.searchHint}>Buscar en toda la cartera</Text>
+                        <Text style={styles.searchHint}>Buscar cliente (propio o externo)</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -552,23 +579,69 @@ export default function CreditsScreen() {
                     <ActivityIndicator size="large" color="#0ea5e9" />
                 </View>
             ) : isSearchActive ? (
-                /* Resultados de búsqueda global */
+                /* Resultados de búsqueda global y externos */
                 <ScrollView contentContainerStyle={styles.listContainer}>
-                    {searchQuery.length < 2 ? (
-                        <Text style={styles.emptyText}>Escribe al menos 2 caracteres...</Text>
-                    ) : searchResults.length === 0 ? (
-                        <Text style={styles.emptyText}>Sin resultados.</Text>
+                    {searchQuery.trim().length < 2 ? (
+                        <Text style={styles.emptyText}>Escribe al menos 2 caracteres para buscar...</Text>
                     ) : (
-                        searchResults.map((item, idx) => (
-                            <CreditCard
-                                key={`search_${item.id}_${idx}`}
-                                item={item}
-                                index={-1}
-                                tabColor="#64748b"
-                                activeTab="Cobro Dia"
-                                onToggleExpand={() => handleSelectCredit(item)}
-                            />
-                        ))
+                        <>
+                            {/* Resultados de Cartera Propia */}
+                            {searchResults.length > 0 && (
+                                <View style={{ marginBottom: 16 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingHorizontal: 4 }}>
+                                        <MaterialCommunityIcons name="briefcase-outline" size={18} color="#0ea5e9" style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0369a1', textTransform: 'uppercase' }}>
+                                            En Mi Cartera ({searchResults.length})
+                                        </Text>
+                                    </View>
+                                    {searchResults.map((item, idx) => (
+                                        <CreditCard
+                                            key={`search_local_${item.id}_${idx}`}
+                                            item={item}
+                                            index={idx}
+                                            tabColor="#0ea5e9"
+                                            activeTab="Cobro Dia"
+                                            onToggleExpand={() => handleSelectCredit(item)}
+                                        />
+                                    ))}
+                                </View>
+                            )}
+
+                            {/* Resultados de Clientes Externos (No pertenecen a mi cartera) */}
+                            <View style={{ marginTop: 4 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <MaterialCommunityIcons name="account-search" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#b45309', textTransform: 'uppercase' }}>
+                                            Clientes Externos (Otra Cartera)
+                                        </Text>
+                                    </View>
+                                    {isSearchingExternal && (
+                                        <ActivityIndicator size="small" color="#f59e0b" />
+                                    )}
+                                </View>
+
+                                {externalResults.length > 0 ? (
+                                    externalResults.map((item, idx) => (
+                                        <CreditCard
+                                            key={`search_ext_${item.id}_${idx}`}
+                                            item={item}
+                                            index={idx}
+                                            tabColor="#f59e0b"
+                                            activeTab="Cobro Dia"
+                                            onToggleExpand={() => handleSelectCredit(item)}
+                                        />
+                                    ))
+                                ) : !isSearchingExternal && searchResults.length === 0 ? (
+                                    <View style={styles.emptyContainer}>
+                                        <MaterialCommunityIcons name="account-search-outline" size={48} color="#cbd5e1" />
+                                        <Text style={styles.emptyText}>No se encontraron clientes ni en tu cartera ni en clientes externos.</Text>
+                                    </View>
+                                ) : !isSearchingExternal && (
+                                    <Text style={[styles.emptyText, { marginVertical: 10 }]}>No hay clientes externos que coincidan con la búsqueda.</Text>
+                                )}
+                            </View>
+                        </>
                     )}
                 </ScrollView>
             ) : (
