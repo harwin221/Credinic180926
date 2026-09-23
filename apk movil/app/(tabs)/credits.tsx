@@ -39,6 +39,7 @@ interface CreditItem {
     collectionsManager: string;
     cuotaNumero: number;
     ultimoAbonoId?: number | null;
+    promedio_atraso?: number;
     // Montos calculados
     details: {
         dueTodayAmount: number;
@@ -116,6 +117,7 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
                 collectionsManager:  agenteName,
                 cuotaNumero:         cuotaHoyObj?.numero_cuota ?? cuotaVencObj?.numero_cuota ?? 0,
                 ultimoAbonoId:       prestamo.ultimo_abono_id || null,
+                promedio_atraso:     parseFloat(prestamo.promedio_atraso) || 0,
                 details: {
                     dueTodayAmount,
                     overdueAmount,
@@ -822,13 +824,19 @@ function CreditCard({
                     {/* Subtítulo por pestaña */}
                     {renderSubtitle()}
 
-                    {/* Saldo pendiente */}
-                    <Text style={styles.infoLabel}>
-                        Saldo:{' '}
-                        <Text style={[styles.infoValue, { color: '#e11d48' }]}>
-                            C$ {fmt(detail.remainingBalance)}
+                    {/* Saldo pendiente y promedio */}
+                    <View style={styles.rowInfo}>
+                        <Text style={styles.infoLabel}>
+                            Saldo:{' '}
+                            <Text style={[styles.infoValue, { color: '#0ea5e9' }]}>
+                                C$ {fmt(detail.remainingBalance)}
+                            </Text>
+                            {'  •  '}Promedio:{' '}
+                            <Text style={[styles.infoValue, { color: (item.promedio_atraso ?? 0) > 2.5 ? '#ef4444' : '#1e293b' }]}>
+                                {(item.promedio_atraso ?? 0).toFixed(1)}
+                            </Text>
                         </Text>
-                    </Text>
+                    </View>
                 </View>
 
                 {/* Ícono de acción */}

@@ -22,7 +22,9 @@ Route::prefix('mobile')->group(function () {
 
     // Protegido con Sanctum
     Route::middleware('auth:sanctum')->group(function () {
-                Route::get('/cartera',            [MobileApiController::class, 'cartera']);
+                Route::get('/search',             [MobileApiController::class, 'search']);
+        Route::get('/mobile_search',      [MobileApiController::class, 'search']);
+        Route::get('/cartera',            [MobileApiController::class, 'cartera']);
         Route::get('/dashboard',          [MobileApiController::class, 'dashboard']);
         Route::post('/abono',             [MobileApiController::class, 'abono']);
         Route::post('/recibo',            [MobileApiController::class, 'recibo']);
