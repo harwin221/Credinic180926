@@ -158,8 +158,9 @@ class MobileApiController extends Controller
         }
 
         return response()->json([
-            'success'  => true,
-            'clientes' => array_values($clientesMap),
+            'success'   => true,
+            'fecha_hoy' => $hoy,
+            'clientes'  => array_values($clientesMap),
         ]);
     }
 

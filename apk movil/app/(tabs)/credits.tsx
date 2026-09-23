@@ -1,7 +1,14 @@
+// Función para obtener fecha local YYYY-MM-DD respetando la zona horaria del dispositivo/Nicaragua
+const getLocalDateString = (d: Date = new Date()): string => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const COBRADOS_HOY_KEY = '@credinic_cobrados_hoy_';
-const getTodayKey = () => `${COBRADOS_HOY_KEY}${new Date().toLocaleDateString('en-CA')}`;
+const getTodayKey = () => `${COBRADOS_HOY_KEY}${getLocalDateString()}`;
 import {
     View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
     ScrollView, TextInput, RefreshControl, ActivityIndicator,
@@ -218,7 +225,7 @@ export default function CreditsScreen() {
             const result = await resp.json();
 
             if (result.success) {
-                const hoy      = new Date().toISOString().split('T')[0];
+                const hoy      = result.fecha_hoy || getLocalDateString();
                 const clientes = result.clientes || [];
 
                 const { dueToday, overdue, expired, upToDate, paidToday: classifiedPaidToday } =
@@ -395,7 +402,7 @@ export default function CreditsScreen() {
                 body: JSON.stringify({
                     prestamo_id: selectedCredit.id,
                     monto:       paymentData.amount,
-                    fecha_abono: new Date().toISOString().split('T')[0],
+                    fecha_abono: getLocalDateString(),
                     local_id:    null,
                 }),
             });

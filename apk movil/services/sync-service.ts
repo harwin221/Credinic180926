@@ -1,3 +1,9 @@
+const getLocalDateStr = (d: Date = new Date()): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
 import { API_ENDPOINTS } from '../config/api';
 import { apiFetch } from '../config/apiFetch';
 import {
@@ -53,7 +59,7 @@ export const syncPendingPayments = async (): Promise<{
                     monto:       payment.amount,
                     fecha_abono: payment.paymentDate
                         ? String(payment.paymentDate).split('T')[0]
-                        : new Date().toISOString().split('T')[0],
+                        : getLocalDateStr(),
                     local_id:    payment.id,
                 }),
             });
@@ -150,7 +156,7 @@ export const downloadOfflineData = async (): Promise<{
         }));
 
         // Armar lista de créditos para la tabla offline_credits
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = getLocalDateStr();
         const allCredits: any[] = [];
 
         for (const cliente of clientes) {
