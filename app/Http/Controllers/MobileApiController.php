@@ -764,7 +764,7 @@ class MobileApiController extends Controller
         $agente = $request->user();
         $buscar = trim($request->get('search', $request->get('buscar', '')));
 
-        // Obtener clientes del agente que tienen o tuvieron préstamos desembolsados (1: Activo, 2: Pagado)
+        // Obtener clientes del agente que tienen préstamos desembolsados y activos
         $clientes = User::join('prestamos as P', 'users.id', 'P.user_id')
             ->when($buscar, function ($query) use ($buscar) {
                 $query->where(function ($q) use ($buscar) {
@@ -774,7 +774,7 @@ class MobileApiController extends Controller
                 });
             })
             ->where('P.desembolsado', 1)
-            ->whereIn('P.estado', [1, 2]) // 1: Activo, 2: Pagado
+            ->whereNotIn('P.estado', [2, 4]) // excluir pagados y anulados
             ->where('P.agente_id', $agente->id)
             ->whereNull('P.fecha_clasificacion')
             ->select('users.*')
@@ -785,10 +785,9 @@ class MobileApiController extends Controller
 
         $all = [];
         $reloan = [];
-        $renewal = [];
+        $renewal = []; // Pestaña eliminada, retorna vacío
 
         foreach ($clientes as $c) {
-            // 1. Obtener préstamos activos del cliente con este agente
             $prestamosActivos = prestamosModel::where('user_id', $c->id)
                 ->where('agente_id', $agente->id)
                 ->where('estado', 1)
@@ -796,7 +795,6 @@ class MobileApiController extends Controller
                 ->whereNull('fecha_clasificacion')
                 ->get();
 
-            $tieneCreditoActivo = $prestamosActivos->count() > 0;
             $totalSaldo = $prestamosActivos->sum('pendiente_abono');
             $primerPrestamoActivo = $prestamosActivos->first();
 
@@ -816,49 +814,18 @@ class MobileApiController extends Controller
                 'creditNumber'  => $primerPrestamoActivo ? ($primerPrestamoActivo->consecutivo ?? $primerPrestamoActivo->id) : '',
             ];
 
-            if ($tieneCreditoActivo) {
-                $all[] = $clientData;
+            $all[] = $clientData;
 
-                // Clasificación de REPRÉSTAMOS:
-                // - Tiene pagado el 75% o más del monto total / total financiado
-                // - Promedio de días de atraso del crédito actual < 2.5 días
-                if ($primerPrestamoActivo && $primerPrestamoActivo->monto_financiado > 0) {
-                    $pagado = max(0, (float)$primerPrestamoActivo->monto_financiado - (float)$primerPrestamoActivo->pendiente_abono);
-                    $pctPagado = ($pagado / (float)$primerPrestamoActivo->monto_financiado) * 100;
-                    $promedioAtraso = (float)$primerPrestamoActivo->promedio_dias_atraso;
+            // Clasificación de REPRÉSTAMOS únicamente:
+            // - Tiene pagado el 75% o más del monto total / total financiado
+            // - Promedio de días de atraso del crédito actual < 2.5 días
+            if ($primerPrestamoActivo && $primerPrestamoActivo->monto_financiado > 0) {
+                $pagado = max(0, (float)$primerPrestamoActivo->monto_financiado - (float)$primerPrestamoActivo->pendiente_abono);
+                $pctPagado = ($pagado / (float)$primerPrestamoActivo->monto_financiado) * 100;
+                $promedioAtraso = (float)$primerPrestamoActivo->promedio_dias_atraso;
 
-                    if ($pctPagado >= 75 && $pctPagado < 100 && $promedioAtraso < 2.5) {
-                        $reloan[] = $clientData;
-                    }
-                }
-            } else {
-                // Clasificación de RENOVACIONES:
-                // - Clientes que cancelaron el 100% de su crédito (monto total financiado pagado, sin crédito activo)
-                // - No volvieron a crear una solicitud de crédito
-                // - Promedio de días de atraso del último crédito cancelado < 2.5 días
-
-                $ultimoPrestamoCancelado = prestamosModel::where('user_id', $c->id)
-                    ->where('agente_id', $agente->id)
-                    ->where('estado', 2) // Pagado / Cancelado
-                    ->where('desembolsado', 1)
-                    ->orderBy('id', 'desc')
-                    ->first();
-
-                if ($ultimoPrestamoCancelado) {
-                    $tieneSolicitudCurso = prestamosModel::where('user_id', $c->id)
-                        ->where('agente_id', $agente->id)
-                        ->where('desembolsado', 0)
-                        ->whereIn('estado_aprobacion', [1, 2]) // 1: Pendiente, 2: Aprobado
-                        ->exists();
-
-                    if (!$tieneSolicitudCurso) {
-                        $promedioAtrasoUltimo = (float)$ultimoPrestamoCancelado->promedio_dias_atraso;
-
-                        if ($promedioAtrasoUltimo < 2.5) {
-                            $clientData['creditNumber'] = $ultimoPrestamoCancelado->consecutivo ?? $ultimoPrestamoCancelado->id;
-                            $renewal[] = $clientData;
-                        }
-                    }
+                if ($pctPagado >= 75 && $pctPagado < 100 && $promedioAtraso < 2.5) {
+                    $reloan[] = $clientData;
                 }
             }
         }
@@ -1069,4 +1036,136 @@ class MobileApiController extends Controller
         ]);
     }
 
+
+
+    // ─── POST /api/mobile/mobile_create_credit ────────────────────────────────
+    public function crearSolicitud(Request $request)
+    {
+        $agente = $request->user();
+
+        // Validaciones de datos mínimos necesarios
+        if (!$request->clientId || !$request->amount || !$request->interestRate || !$request->termMonths || !$request->firstPaymentDate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Faltan campos obligatorios para procesar la solicitud.',
+            ], 400);
+        }
+
+        // 1. Mapear frecuencia de pago al ID que espera el controlador de la web
+        $paymentFrequency = $request->paymentFrequency ?? 'Semanal';
+        $formaPagoId = "2"; // Semanal por defecto
+        if (strcasecmp($paymentFrequency, 'Diario') === 0) {
+            $formaPagoId = "1";
+        } elseif (strcasecmp($paymentFrequency, 'Semanal') === 0) {
+            $formaPagoId = "2";
+        } elseif (strcasecmp($paymentFrequency, 'Quincenal') === 0) {
+            $formaPagoId = "3";
+        } elseif (strcasecmp($paymentFrequency, 'Catorcenal') === 0) {
+            $formaPagoId = "7";
+        }
+
+        $amount = (float)$request->amount;
+        $interestRate = (float)$request->interestRate;
+        $termMonths = (float)$request->termMonths;
+
+        // 2. Determinar número de cuotas según la frecuencia y el plazo en meses
+        $numeroCuotas = 0;
+        switch ($formaPagoId) {
+            case "1": // Diario
+                $numeroCuotas = $termMonths * 20;
+                break;
+            case "2": // Semanal
+                $numeroCuotas = $termMonths * 4;
+                break;
+            case "3": // Quincenal
+                $numeroCuotas = $termMonths * 2;
+                break;
+            case "7": // Catorcenal
+                $numeroCuotas = $termMonths * 2;
+                break;
+            default:
+                $numeroCuotas = $termMonths * 4; // Mensual por defecto si fallara
+                break;
+        }
+
+        if ($numeroCuotas <= 0) {
+            $numeroCuotas = 1;
+        }
+
+        // 3. Cálculos matemáticos financieros idénticos a los del simulador / formulario web
+        $interesMes = $amount * ($interestRate / 100);
+        $totalIntereses = $interesMes * $termMonths;
+        $montoTotalFinanciar = $amount + $totalIntereses;
+
+        $montoCuota = round($montoTotalFinanciar / $numeroCuotas, 2);
+        $interesPagar = round($totalIntereses / $numeroCuotas, 2);
+
+        // 4. Inferir día de la semana preferido si es semanal/catorcenal
+        $firstPaymentCarbon = \Carbon\Carbon::parse($request->firstPaymentDate);
+        $diaSemanaPreferido = null;
+        if (in_array($formaPagoId, ["2", "7"])) {
+            $diaSemanaPreferido = $firstPaymentCarbon->dayOfWeek; // 0=Dom, 1=Lun, etc.
+        }
+
+        // 5. Crear una emulación del Request de Laravel para el controlador web
+        $webRequest = new Request();
+        $webRequest->merge([
+            'cliente'             => encode($request->clientId),
+            'agente'              => encode($agente->id),
+            'vendedor'            => encode($agente->id),
+            'fiador'              => null,
+            'negocio'             => null,
+            'fechaPrestamo'       => \Carbon\Carbon::now()->toDateString(),
+            'desembolso'          => null,
+            'fechaDesembolso'     => \Carbon\Carbon::now()->toDateString(),
+            'moneda'              => 'C$',
+            'montoFinanciar'      => $amount,
+            'chkSolicitud'        => true, // Marcador crítico para indicar que es una solicitud
+            'montoTotalFinanciar' => $montoTotalFinanciar,
+            'formaPago'           => $formaPagoId,
+            'plazoPago'           => $termMonths,
+            'fechaPago'           => $firstPaymentCarbon->toDateString(),
+            'montoCuota'          => $montoCuota,
+            'tasaInteres'         => $interestRate,
+            'interesPagar'        => $interesPagar,
+            'interesMes'          => $interesMes,
+            'totalIntereses'      => $totalIntereses,
+            'comentarios'         => $request->comentarios ?? 'Solicitud creada desde el APK móvil',
+            'dias_mora'           => 1,
+            'moraTipo'            => 'Fijo',
+            'monto_mora'          => 0.00,
+            'tipo_prestamo'       => $request->tipoPrestamo ?? 'Nuevo',
+            'tipo_destino'        => null,
+            'diaSemanaPreferido'  => $diaSemanaPreferido,
+            'dia_pago_preferido'  => null,
+            'diasPago'            => null,
+        ]);
+
+        try {
+            // 6. Invocar al método store del prestamosController usando el contenedor
+            // Esto asegura la persistencia, el consecutivo único y la generación de cuotas (plan de pagos)
+            $webController = app(\App\Http\Controllers\prestamosController::class);
+            $webResponse = $webController->store($webRequest);
+
+            // Analizar la respuesta del controlador
+            $responseContent = json_decode($webResponse->getContent(), true);
+
+            if (isset($responseContent['type']) && $responseContent['type'] === 'success') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Solicitud de crédito enviada y registrada con éxito en el sistema.',
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => $responseContent['message'] ?? 'Error al procesar la solicitud en el servidor.',
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ocurrió un error inesperado al guardar la solicitud: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }

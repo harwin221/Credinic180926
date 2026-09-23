@@ -9,7 +9,7 @@ import CreditFormModal from '../../components/CreditFormModal';
 import CustomAlert from '../../components/CustomAlert';
 import { AlertHelper } from '../../utils/custom-alert-helper';
 
-const TABS = ['Mi Cartera', 'Représtamos', 'Renovaciones'];
+const TABS = ['Mi Cartera', 'Représtamos'];
 const fmt = (n: any) => (Number(n) || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatDate = (dateValue: any) => {
@@ -81,7 +81,7 @@ export default function ClientsScreen() {
         fetchClients(text);
     };
 
-    const currentList = activeTab === 'Mi Cartera' ? data.all : activeTab === 'Représtamos' ? data.reloan : data.renewal;
+    const currentList = activeTab === 'Mi Cartera' ? data.all : data.reloan;
 
     const handleSelectClient = async (client: any) => {
         setSelectedClient(client);
@@ -187,7 +187,7 @@ export default function ClientsScreen() {
                                 onPress={() => setActiveTab(tab)}
                             >
                                 <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                                    {tab} ({(activeTab === tab ? currentList : tab === 'Mi Cartera' ? data.all : tab === 'Représtamos' ? data.reloan : data.renewal).length})
+                                    {tab} ({(activeTab === tab ? currentList : tab === 'Mi Cartera' ? data.all : data.reloan).length})
                                 </Text>
                             </TouchableOpacity>
                         ))}
@@ -217,7 +217,7 @@ export default function ClientsScreen() {
                                             <MaterialCommunityIcons name="phone" size={12} color="#94a3b8" /> {client.phone}
                                         </Text>
                                     ) : null}
-                                    {(activeTab === 'Représtamos' || activeTab === 'Renovaciones') && (
+                                    {(activeTab === 'Représtamos') && (
                                         <TouchableOpacity 
                                             style={styles.createCreditButton}
                                             onPress={(e) => {
@@ -230,9 +230,9 @@ export default function ClientsScreen() {
                                         </TouchableOpacity>
                                     )}
                                 </View>
-                                {(activeTab === 'Représtamos' || activeTab === 'Renovaciones') && (
-                                    <View style={[styles.badge, activeTab === 'Représtamos' ? styles.badgeBlue : styles.badgeGreen]}>
-                                        <Text style={styles.badgeText}>{activeTab === 'Représtamos' ? 'Représtamo' : 'Renovación'}</Text>
+                                {(activeTab === 'Représtamos') && (
+                                    <View style={[styles.badge, styles.badgeBlue]}>
+                                        <Text style={styles.badgeText}>{'Représtamo'}</Text>
                                     </View>
                                 )}
                             </TouchableOpacity>
