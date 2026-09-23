@@ -1980,6 +1980,7 @@ class MobileApiController extends Controller
     }
 
     // ─── GET /api/mobile/mobile_credit_detail ──────────────────────────────────
+        // ─── GET /api/mobile/mobile_credit_detail ──────────────────────────────────
     public function creditDetail(Request $request)
     {
         $creditId = $request->get('creditId', $request->get('id', $request->get('prestamo_id')));
@@ -2002,8 +2003,9 @@ class MobileApiController extends Controller
                 $cq->orderBy('numero_cuota', 'asc');
             },
             'abonos' => function($aq) {
-                $aq->where('estado', 1)->orderBy('id', 'asc');
-            }
+                $aq->where('estado', 1)->orderBy('fecha_abono', 'asc')->orderBy('id', 'asc');
+            },
+            'abonos.user_create'
         ])->find($creditId);
 
         if (!$prestamo) {
@@ -2041,38 +2043,77 @@ class MobileApiController extends Controller
             $lateDays = Carbon::parse(substr($primeraCuotaVencida->fecha_cuota, 0, 10))->diffInDays(Carbon::now());
         }
 
-        // Plan de pagos detallado para el reporte / estado de cuenta
+        // Calcular promedio días de atraso exacto como la web
+        $totalDiasAtraso = 0;
+        $totalCuotas = $cuotas->count();
+        foreach ($cuotas as $cuota) {
+            $fechaPlanCuota = Carbon::parse($cuota->fecha_cuota);
+            if ($cuota->estado == 3) {
+                $ultimoAbonoCuota = \App\Models\prestamoCuotaAbonoModel::where('prestamo_cuota_id', $cuota->id)
+                    ->where('estado', 1)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                if ($ultimoAbonoCuota) {
+                    $fechaPagoReal = Carbon::parse($ultimoAbonoCuota->created_at);
+                    $diasA = $fechaPlanCuota->diffInDays($fechaPagoReal, false);
+                    if ($diasA > 0) $totalDiasAtraso += $diasA;
+                }
+            } elseif (in_array($cuota->estado, [1, 2]) && $fechaPlanCuota->isPast()) {
+                $diasA = $fechaPlanCuota->diffInDays(Carbon::now(), false);
+                if ($diasA > 0) $totalDiasAtraso += $diasA;
+            }
+        }
+        $promedioDiasAtraso = $totalCuotas > 0 ? round($totalDiasAtraso / $totalCuotas, 2) : 0;
+
+        // Plan de pagos detallado
         $saldoAnterior = (float)$prestamo->monto_financiado;
         $installments = [];
         $totalPlanCuota = 0;
         $totalPlanMora = 0;
         $totalPlanPagado = 0;
+        $totalPlanCapital = 0;
+        $totalPlanInteres = 0;
 
         foreach ($cuotas as $c) {
             $valorCuota = (float)$c->monto_cuota;
             $nuevoSaldo = max(0, $saldoAnterior - $valorCuota);
             $mora = (float)($c->monto_mora ?? 0);
-            $abonosCuota = $c->abonos()->where('estado', 1)->sum('monto_abono');
-            $statusStr = $c->estado == 3 ? 'PAGADA' : ($c->estado == 2 ? 'VENCIDA' : 'PENDIENTE');
+            $abonosCuota = (float)$c->abonos()->where('estado', 1)->sum('monto_abono');
+            $statusStr = $c->estado == 3 ? 'PAGADA' : ($c->estado == 2 ? 'PARCIAL' : ($c->fecha_cuota < $hoy ? 'VENCIDA' : 'PENDIENTE'));
+            $cap = (float)($c->monto_cuota - $c->monto_interes);
+            $int = (float)$c->monto_interes;
+
+            $fechaFormatted = substr($c->fecha_cuota, 0, 10);
 
             $installments[] = [
                 'id'            => $c->id,
                 'number'        => $c->numero_cuota,
-                'dueDate'       => substr($c->fecha_cuota, 0, 10),
-                'principal'     => (float)($c->monto_cuota - $c->monto_interes),
-                'interest'      => (float)$c->monto_interes,
+                'numero_cuota'  => $c->numero_cuota,
+                'date'          => $fechaFormatted,
+                'dueDate'       => $fechaFormatted,
+                'fecha_cuota'   => $fechaFormatted,
+                'principal'     => $cap,
+                'capital'       => $cap,
+                'interest'      => $int,
+                'interes'       => $int,
                 'quota'         => $valorCuota,
                 'amount'        => $valorCuota,
+                'monto_cuota'   => $valorCuota,
                 'saldoAnterior' => $saldoAnterior,
                 'balance'       => $nuevoSaldo,
+                'saldo'         => $nuevoSaldo,
                 'mora'          => $mora,
-                'paid'          => (float)$abonosCuota,
+                'paid'          => $abonosCuota,
+                'pagado'        => $abonosCuota,
                 'status'        => $statusStr,
+                'estado'        => $c->estado,
             ];
             $saldoAnterior = $nuevoSaldo;
             $totalPlanCuota += $valorCuota;
             $totalPlanMora += $mora;
-            $totalPlanPagado += (float)$abonosCuota;
+            $totalPlanPagado += $abonosCuota;
+            $totalPlanCapital += $cap;
+            $totalPlanInteres += $int;
         }
 
         // Historial de abonos
@@ -2082,27 +2123,43 @@ class MobileApiController extends Controller
         $totalAbonosInteres = 0;
         $totalAbonosMora = 0;
 
-        foreach ($prestamo->abonos as $a) {
+        foreach ($prestamo->abonos as $index => $a) {
             $montoAbonado = (float)($a->total_abonado ?? ($a->total_efectivo + $a->total_tarjeta + $a->total_cheque + $a->total_transferencia));
             $cap = (float)($a->total_abonado_capital ?? 0);
             $int = (float)($a->total_abonado_interes ?? 0);
             $mor = (float)($a->total_abonado_mora ?? 0);
             $isCancelacion = ($a->tipo_abono == 3 || str_contains(strtolower($a->referencia_transferencia ?? ''), 'cancelaci'));
+            $fechaAbonoStr = $a->fecha_abono ? substr($a->fecha_abono, 0, 10) : substr($a->created_at, 0, 10);
+            $reciboNum = 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT);
+            $gestorAbono = $a->user_create ? ($a->user_create->full_name ?? $a->user_create->nombres) : 'Gestor';
 
             $payments[] = [
-                'id'             => $a->id,
-                'receiptNumber'  => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
-                'date'           => substr($a->fecha_abono ?? $a->created_at, 0, 10),
-                'amount'         => $montoAbonado,
-                'principal'      => $cap,
-                'interest'       => $int,
-                'mora'           => $mor,
-                'receivedBy'     => $a->user_create ? ($a->user_create->full_name ?? $a->user_create->nombres) : 'Gestor',
-                'status'         => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
-                'type'           => $isCancelacion ? 'Cancelación Crédito' : ($a->tipo ?? 'Ordinario'),
-                'tipo_abono'     => $a->tipo_abono,
-                'is_cancelacion' => $isCancelacion,
-                'referencia'     => $a->referencia_transferencia ?? '',
+                'id'                => $a->id,
+                'number'            => $index + 1,
+                'receiptNumber'     => $reciboNum,
+                'transactionNumber' => $reciboNum,
+                'date'              => $fechaAbonoStr,
+                'paymentDate'       => $a->fecha_abono ?? $a->created_at,
+                'fecha_pago'        => $fechaAbonoStr,
+                'fecha_abono'       => $fechaAbonoStr,
+                'amount'            => $montoAbonado,
+                'total'             => $montoAbonado,
+                'monto'             => $montoAbonado,
+                'principal'         => $cap,
+                'principalApplied'  => $cap,
+                'capital'           => $cap,
+                'interest'          => $int,
+                'interestApplied'   => $int,
+                'interes'           => $int,
+                'mora'              => $mor,
+                'moraApplied'       => $mor,
+                'receivedBy'        => $gestorAbono,
+                'recibido_por'      => $gestorAbono,
+                'status'            => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
+                'type'              => $isCancelacion ? 'Cancelación Crédito' : ($a->tipo ?? 'Ordinario'),
+                'tipo_abono'        => $a->tipo_abono,
+                'is_cancelacion'    => $isCancelacion,
+                'referencia'        => $a->referencia_transferencia ?? '',
             ];
             $totalAbonosMonto += $montoAbonado;
             $totalAbonosCapital += $cap;
@@ -2112,38 +2169,58 @@ class MobileApiController extends Controller
 
         $gestorName = $prestamo->userCreado ? ($prestamo->userCreado->full_name ?? $prestamo->userCreado->nombres) : ($prestamo->agente ? ($prestamo->agente->full_name ?? $prestamo->agente->nombres) : 'N/A');
 
+        $ultimaCuota = $cuotas->last();
+        $fechaApertura = substr($prestamo->fecha_desembolso ?? $prestamo->fecha_prestamo ?? '', 0, 10);
+        $fechaFinal = substr($prestamo->fecha_ultimo_pago ?? ($ultimaCuota ? $ultimaCuota->fecha_cuota : ''), 0, 10);
+
         $data = [
             'id'                 => $prestamo->id,
             'id_enc'             => $prestamo->id_enc,
             'clientId'           => $cliente ? $cliente->id : null,
             'clientName'         => $cliente ? ($cliente->full_name ?? trim($cliente->nombres . ' ' . $cliente->apellidos)) : 'N/A',
             'clientCode'         => $cliente ? ($cliente->codigo_cliente ?? $cliente->cedula ?? (string)$cliente->id) : '',
+            'clientAddress'      => $cliente ? ($cliente->direccion ?? 'N/A') : 'N/A',
             'creditNumber'       => $prestamo->consecutivo ?? (string)$prestamo->id,
             'totalAmount'        => (float)$prestamo->monto_prestamo,
+            'montoPrestado'      => (float)$prestamo->monto_prestamo,
             'financedAmount'     => (float)$prestamo->monto_financiado,
+            'montoFinanciado'    => (float)$prestamo->monto_financiado,
             'interestRate'       => (float)$prestamo->tasa_prestamo,
-            'paymentFrequency'   => $prestamo->forma_pago,
-            'deliveryDate'       => substr($prestamo->fecha_desembolso ?? $prestamo->fecha_prestamo, 0, 10),
-            'dueDate'            => substr($prestamo->fecha_ultimo_pago ?? ($cuotas->last()->fecha_cuota ?? ''), 0, 10),
+            'plazoPago'          => $prestamo->plazo_pago ?? 1,
+            'term'               => $prestamo->plazo_pago ?? 1,
+            'paymentFrequency'   => $prestamo->forma_pago ?? 'N/A',
+            'formaPago'          => $prestamo->forma_pago ?? 'N/A',
+            'deliveryDate'       => $fechaApertura,
+            'fechaApertura'      => $fechaApertura,
+            'fecha_desembolso'   => $fechaApertura,
+            'dueDate'            => $fechaFinal,
+            'fechaFinal'         => $fechaFinal,
+            'fecha_ultimo_pago'  => $fechaFinal,
             'collectionsManager' => $gestorName,
-            'status'             => $prestamo->estado == 1 ? 'Activo' : ($prestamo->estado == 2 ? 'Pagado' : 'Cancelado'),
-            'moneda'             => $prestamo->moneda_prestamo ?? 1,
+            'cobrador'           => $gestorName,
+            'status'             => $prestamo->estado_prestamo ?? ($prestamo->estado == 1 ? 'Activo' : ($prestamo->estado == 2 ? 'Pagado' : 'Cancelado')),
+            'estadoPrestamo'     => $prestamo->estado_prestamo ?? 'Activo',
+            'promedioDiasAtraso' => (float)$promedioDiasAtraso,
+            'moneda'             => $prestamo->moneda_prestamo == 2 ? 'U$' : 'C$',
             'details'            => [
-                'remainingBalance'  => (float)$prestamo->pendiente_abono,
-                'dueTodayAmount'    => (float)$dueTodayAmount,
-                'overdueAmount'     => (float)$overdueAmount,
-                'lateDays'          => (int)$lateDays,
-                'installmentAmount' => (float)$prestamo->monto_cuota,
+                'remainingBalance'   => (float)$prestamo->pendiente_abono,
+                'dueTodayAmount'     => (float)$dueTodayAmount,
+                'overdueAmount'      => (float)$overdueAmount,
+                'lateDays'           => (int)$lateDays,
+                'installmentAmount'  => (float)$prestamo->monto_cuota,
+                'promedioDiasAtraso' => (float)$promedioDiasAtraso,
             ],
             'fullStatement'      => [
                 'installments' => $installments,
                 'payments'     => $payments,
                 'totals'       => [
                     'plan'   => [
-                        'cuota'   => $totalPlanCuota,
-                        'mora'    => $totalPlanMora,
-                        'pagado'  => $totalPlanPagado,
-                        'saldo'   => max(0, $totalPlanCuota - $totalPlanPagado),
+                        'cuota'    => $totalPlanCuota,
+                        'capital'  => $totalPlanCapital,
+                        'interes'  => $totalPlanInteres,
+                        'mora'     => $totalPlanMora,
+                        'pagado'   => $totalPlanPagado,
+                        'saldo'    => max(0, $totalPlanCuota - $totalPlanPagado),
                     ],
                     'abonos' => [
                         'total'    => $totalAbonosMonto,
