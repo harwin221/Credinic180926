@@ -886,17 +886,29 @@ class MobileApiController extends Controller
                 ];
             })->values()->toArray();
 
+            $sumaCuotas = (float)($p->suma_cuotas ?? $p->cuotas->sum('monto_cuota'));
+            $totalPagado = max(0, $sumaCuotas - (float)$p->pendiente_abono);
+            $cuotaMonto = (float)($p->cuotas->first()->monto_cuota ?? 0);
+            
             $creditsData[] = [
-                'id'              => $p->id,
-                'creditNumber'    => (string)($p->consecutivo ?? $p->id),
-                'amount'          => (float)$p->monto,
-                'remainingBalance'=> (float)$p->pendiente_abono,
-                'interestRate'    => (float)($p->interes ?? 0),
-                'term'            => (string)($p->plazo ?? ''),
-                'status'          => $p->estado == 1 ? 'Active' : ($p->estado == 2 ? 'Paid' : 'Cancelled'),
-                'startDate'       => $p->fecha_desembolso ?? $p->created_at,
-                'paymentPlan'     => $paymentPlan,
-                'paymentHistory'  => $paymentHistory,
+                'id'                => $p->id,
+                'creditNumber'      => (string)($p->consecutivo ?? $p->id),
+                'currency'          => $p->moneda_prestamo == 2 ? 'USD' : 'NIO',
+                'paymentFrequency'  => $p->forma_pago_tipo ?? 'Diario',
+                'termMonths'        => (string)($p->plazo ?? '1'),
+                'amount'            => (float)$p->monto,
+                'totalAmount'       => (float)($p->total_prestamo ?? $sumaCuotas),
+                'installmentAmount' => $cuotaMonto,
+                'totalPaid'         => (float)$totalPagado,
+                'remainingBalance'  => (float)$p->pendiente_abono,
+                'overdueAmount'     => 0,
+                'interestRate'      => (float)($p->interes ?? 0),
+                'disbursementDate'  => $p->fecha_desembolso ?? $p->created_at,
+                'firstPaymentDate'  => $p->cuotas->first()->fecha_cuota ?? null,
+                'dueDate'           => $p->fecha_vencimiento ?? null,
+                'status'            => $p->estado == 1 ? 'Active' : ($p->estado == 2 ? 'Paid' : 'Cancelled'),
+                'paymentPlan'       => $paymentPlan,
+                'paymentHistory'    => $paymentHistory,
             ];
         }
 

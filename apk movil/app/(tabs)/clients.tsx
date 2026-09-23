@@ -10,7 +10,7 @@ import CustomAlert from '../../components/CustomAlert';
 import { AlertHelper } from '../../utils/custom-alert-helper';
 
 const TABS = ['Mi Cartera', 'Représtamos', 'Renovaciones'];
-const fmt = (n: number) => n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: any) => (Number(n) || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatDate = (dateValue: any) => {
     if (!dateValue) return 'N/A';
