@@ -1833,11 +1833,8 @@ class MobileApiController extends Controller
                         $abonoCuota->created_user_id = $gestorCobradorId;
                         $abonoCuota->save();
 
-                        $cuota->monto_pendiente_cuota = 0;
-                        $cuota->total_pendiente_capital_cuota = 0;
-                        $cuota->total_pendiente_interes_cuota = 0;
-                        $cuota->total_pendiente_mora_cuota = 0;
                         $cuota->estado = 3; // Pagada
+                        $cuota->fecha_pagado = Carbon::now();
                         $cuota->save();
                     }
 
