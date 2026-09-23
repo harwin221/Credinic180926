@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
     },
     modalHeader: {
         flexDirection: 'row',
-        justifyContent: 'between',
+        justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
         paddingTop: 18,
@@ -708,7 +708,7 @@ const styles = StyleSheet.create({
     },
     detailRow: {
         flexDirection: 'row',
-        justifyContent: 'between',
+        justifyContent: 'space-between',
         alignItems: 'center',
         paddingVertical: 9,
         borderBottomWidth: 1,

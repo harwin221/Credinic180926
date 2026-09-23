@@ -1432,6 +1432,7 @@ class MobileApiController extends Controller
             $tieneAsignados = count($agentesAsignados) > 0;
 
             $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado'])
+                ->where('estado', '!=', 4)
                 ->where(function($q) {
                     $q->where(function($sub) {
                         $sub->where('estado_aprobacion', 1)
@@ -1476,6 +1477,8 @@ class MobileApiController extends Controller
 
                 $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
                 $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+                $dir = $p->cliente ? ($p->cliente->direccion ?? '') : '';
+                $barrio = $p->cliente ? ($p->cliente->barrio ?? '') : '';
 
                 $rejectedBy = 'N/A';
                 if ($p->updated_user_id) {
@@ -1501,6 +1504,8 @@ class MobileApiController extends Controller
                     'firstPaymentDate' => $p->fecha_primer_pago ?? null,
                     'department' => $dep,
                     'municipality' => $mun,
+                    'address' => $dir,
+                    'neighborhood' => $barrio,
                     'collectionsManager' => $p->userCreado ? ($p->userCreado->full_name ?? $p->userCreado->nombres) : 'N/A',
                     'applicationDate' => $p->created_at ? $p->created_at->toIso8601String() : date('c'),
                     'rejectionReason' => $p->comentarios_rechazado ?? '',
@@ -1608,6 +1613,7 @@ class MobileApiController extends Controller
             $tieneAsignados = count($agentesAsignados) > 0;
 
             $prestamos = \App\Models\prestamosModel::with(['cliente.departamento_municipio.departamento', 'userCreado', 'cuotas'])
+                ->where('estado', '!=', 4)
                 ->where(function ($q) {
                     $q->where(function ($sub) {
                         $sub->where('estado_aprobacion', 2)
@@ -1656,6 +1662,8 @@ class MobileApiController extends Controller
 
                 $mun = $p->cliente && $p->cliente->departamento_municipio ? $p->cliente->departamento_municipio->nombre : '';
                 $dep = $p->cliente && $p->cliente->departamento_municipio && $p->cliente->departamento_municipio->departamento ? $p->cliente->departamento_municipio->departamento->nombre : '';
+                $dir = $p->cliente ? ($p->cliente->direccion ?? '') : '';
+                $barrio = $p->cliente ? ($p->cliente->barrio ?? '') : '';
 
                 $rejectedBy = 'N/A';
                 if ($p->updated_user_id) {
