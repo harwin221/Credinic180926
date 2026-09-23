@@ -381,47 +381,47 @@ export default function DisbursementsScreen() {
                                             <Text style={styles.detailLabel}>Monto Aprobado</Text>
                                             <Text style={styles.detailValue}>C$ {Number(selectedCredit?.amount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                         </View>
-
-                                        <View style={styles.detailRow}>
-                                            <Text style={styles.detailLabel}>Saldo Pendiente</Text>
-                                            <Text style={styles.detailValueWarning}>C$ {Number(selectedCredit?.outstandingBalance || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
-                                        </View>
-
-                                        <View style={styles.detailRow}>
+                                        {Number(selectedCredit?.outstandingBalance || 0) > 0 && (
+                                            <View style={styles.detailRow}>
+                                                <Text style={styles.detailLabel}>Saldo Pendiente</Text>
+                                                <Text style={styles.detailValueWarning}>C$ {Number(selectedCredit?.outstandingBalance || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
+                                            </View>
+                                        )}
+                                        <View style={[styles.detailRow, styles.netRow]}>
                                             <Text style={styles.detailLabelBold}>Monto Neto a Entregar</Text>
                                             <Text style={styles.detailValueHighlight}>C$ {Number(selectedCredit?.netDisbursementAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                         </View>
-
                                         <View style={styles.detailRow}>
-                                            <Text style={styles.detailLabel}>Cuota</Text>
-                                            <Text style={styles.detailValue}>C$ {Number(selectedCredit?.totalInstallmentAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
+                                            <Text style={styles.detailLabel}>Total a Pagar</Text>
+                                            <Text style={styles.detailValue}>C$ {Number(selectedCredit?.totalAmount || selectedCredit?.totalInstallmentAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                         </View>
-
+                                        <View style={styles.detailRow}>
+                                            <Text style={styles.detailLabel}>Valor de Cuota</Text>
+                                            <Text style={styles.detailValueBold}>C$ {Number(selectedCredit?.installmentAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
+                                        </View>
                                         <View style={styles.detailRow}>
                                             <Text style={styles.detailLabel}>Plazo</Text>
                                             <Text style={styles.detailValue}>{selectedCredit?.termMonths || 0} meses</Text>
                                         </View>
-
                                         <View style={styles.detailRow}>
                                             <Text style={styles.detailLabel}>Frecuencia</Text>
                                             <Text style={styles.detailValue}>{selectedCredit?.paymentFrequency || 'N/A'}</Text>
                                         </View>
-
                                         <View style={styles.detailRow}>
                                             <Text style={styles.detailLabel}>Tasa de Interés</Text>
                                             <Text style={styles.detailValue}>{selectedCredit?.interestRate || 0}%</Text>
                                         </View>
-
                                         <View style={styles.detailRow}>
                                             <Text style={styles.detailLabel}>Gestor</Text>
                                             <Text style={styles.detailValue}>{selectedCredit?.collectionsManager || 'N/A'}</Text>
                                         </View>
-
                                         <View style={styles.detailRow}>
                                             <Text style={styles.detailLabel}>Fecha Primera Cuota</Text>
                                             <Text style={styles.detailValue}>
-                                                {selectedCredit?.firstPaymentDate 
-                                                    ? new Date(selectedCredit.firstPaymentDate).toLocaleDateString('es-NI')
+                                                {selectedCredit?.firstPaymentDate
+                                                     ? (typeof selectedCredit.firstPaymentDate === 'string' && selectedCredit.firstPaymentDate.length === 10
+                                                         ? selectedCredit.firstPaymentDate.split('-').reverse().join('/')
+                                                         : new Date(selectedCredit.firstPaymentDate).toLocaleDateString('es-NI'))
                                                     : 'N/A'}
                                             </Text>
                                         </View>
@@ -434,7 +434,7 @@ export default function DisbursementsScreen() {
                                                 style={styles.denyButton}
                                                 onPress={() => selectedCredit && handleDeny(selectedCredit.id, selectedCredit.clientName)}
                                             >
-                                                <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
+                                                <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
                                                 <Text style={styles.buttonText}>Denegar</Text>
                                             </TouchableOpacity>
 
@@ -442,7 +442,7 @@ export default function DisbursementsScreen() {
                                                 style={styles.disburseButton}
                                                 onPress={() => selectedCredit && handleDisburse(selectedCredit.id)}
                                             >
-                                                <MaterialCommunityIcons name="cash-check" size={20} color="#fff" />
+                                                <MaterialCommunityIcons name="cash-check" size={18} color="#fff" />
                                                 <Text style={styles.buttonText}>Desembolsar</Text>
                                             </TouchableOpacity>
                                         </View>
@@ -622,135 +622,172 @@ const styles = StyleSheet.create({
     // Modal Styles
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 20,
     },
     modalContent: {
         backgroundColor: '#ffffff',
-        borderRadius: 20,
+        borderRadius: 24,
         width: '100%',
-        maxHeight: '85%',
+        maxHeight: '90%',
+        overflow: 'hidden',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+        elevation: 10,
     },
     modalHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'between',
         alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingTop: 18,
+        paddingBottom: 14,
         borderBottomWidth: 1,
         borderBottomColor: '#f1f5f9',
     },
     modalTitle: {
-        fontSize: 20,
+        fontSize: 17,
         fontWeight: '800',
-        color: '#334155',
+        color: '#1e293b',
         flex: 1,
+        letterSpacing: 0.3,
     },
     closeButton: {
-        padding: 4,
+        padding: 6,
+        borderRadius: 20,
+        backgroundColor: '#f1f5f9',
+        marginLeft: 8,
     },
     addressSection: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
-        backgroundColor: '#e0f2fe',
-        padding: 12,
-        marginHorizontal: 20,
-        marginTop: 12,
-        borderRadius: 8,
+        alignItems: 'center',
+        backgroundColor: '#f0f9ff',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginHorizontal: 18,
+        marginTop: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#bae6fd',
         gap: 8,
     },
     addressFullText: {
         fontSize: 13,
         color: '#0369a1',
         flex: 1,
-        lineHeight: 18,
+        fontWeight: '500',
     },
     warningSection: {
         backgroundColor: '#fef3c7',
-        padding: 16,
-        marginHorizontal: 20,
+        padding: 14,
+        marginHorizontal: 18,
         marginTop: 12,
-        borderRadius: 8,
+        borderRadius: 10,
         alignItems: 'center',
     },
     warningTitle: {
         fontSize: 13,
         color: '#92400e',
         fontWeight: '600',
-        marginBottom: 4,
+        marginBottom: 2,
     },
     warningAmount: {
-        fontSize: 20,
+        fontSize: 18,
         color: '#92400e',
         fontWeight: '800',
     },
     detailsSection: {
-        padding: 20,
-        gap: 12,
+        paddingHorizontal: 18,
+        paddingTop: 10,
+        paddingBottom: 6,
     },
     detailRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'between',
         alignItems: 'center',
-        paddingVertical: 8,
+        paddingVertical: 9,
         borderBottomWidth: 1,
-        borderBottomColor: '#f8fafc',
+        borderBottomColor: '#f1f5f9',
+    },
+    netRow: {
+        backgroundColor: '#f0fdf4',
+        marginHorizontal: -10,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        borderBottomWidth: 0,
+        marginVertical: 4,
     },
     detailLabel: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#64748b',
+        fontWeight: '500',
     },
     detailLabelBold: {
-        fontSize: 14,
-        color: '#334155',
+        fontSize: 13,
+        color: '#0f766e',
         fontWeight: '700',
     },
     detailValue: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
         color: '#334155',
     },
-    detailValueHighlight: {
-        fontSize: 16,
-        fontWeight: '800',
-        color: '#10b981',
-    },
-    detailValueWarning: {
+    detailValueBold: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#f59e0b',
+        color: '#0f172a',
+    },
+    detailValueHighlight: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#059669',
+    },
+    detailValueWarning: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#d97706',
     },
     buttonContainer: {
         flexDirection: 'row',
         gap: 12,
-        paddingHorizontal: 20,
-        marginTop: 8,
+        paddingHorizontal: 18,
+        paddingTop: 12,
+        paddingBottom: 18,
     },
     denyButton: {
         flex: 1,
         flexDirection: 'row',
         backgroundColor: '#ef4444',
-        paddingVertical: 16,
+        paddingVertical: 13,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
+        gap: 6,
+        elevation: 2,
+        shadowColor: '#ef4444',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
     },
     disburseButton: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: '#10b981',
-        paddingVertical: 16,
+        backgroundColor: '#059669',
+        paddingVertical: 13,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
+        gap: 6,
+        elevation: 2,
+        shadowColor: '#059669',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
     },
     buttonText: {
         color: '#ffffff',
@@ -760,7 +797,7 @@ const styles = StyleSheet.create({
     rejectionSection: {
         backgroundColor: '#fef2f2',
         padding: 16,
-        marginHorizontal: 20,
+        marginHorizontal: 18,
         marginTop: 12,
         marginBottom: 20,
         borderRadius: 12,
@@ -779,4 +816,3 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
 });
-
