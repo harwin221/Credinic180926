@@ -231,6 +231,16 @@ export default function ClientsScreen() {
                                             <MaterialCommunityIcons name="phone" size={12} color="#94a3b8" /> {client.phone}
                                         </Text>
                                     ) : null}
+                                    <View style={styles.clientMetricsRow}>
+                                        <Text style={styles.clientMetricLabel}>
+                                            Saldo: <Text style={styles.clientMetricValueBlue}>C$ {(client.totalSaldo ?? 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
+                                        </Text>
+                                        <Text style={styles.clientMetricLabel}>
+                                            {'  •  '}Promedio: <Text style={((client.promedio_atraso ?? 0) > 2.5) ? styles.clientMetricValueRed : styles.clientMetricValueBlack}>
+                                                {client.promedio_atraso !== undefined ? Number(client.promedio_atraso).toFixed(1) : '0.0'}
+                                            </Text>
+                                        </Text>
+                                    </View>
                                     {(activeTab === 'Représtamos') && (
                                         <TouchableOpacity 
                                             style={styles.createCreditButton}
@@ -581,6 +591,11 @@ const styles = StyleSheet.create({
     clientName: { fontSize: 14, fontWeight: '700', color: '#334155' },
     clientSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
     clientPhone: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+    clientMetricsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap' },
+    clientMetricLabel: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+    clientMetricValueBlue: { color: '#0ea5e9', fontWeight: 'bold' },
+    clientMetricValueRed: { color: '#ef4444', fontWeight: 'bold' },
+    clientMetricValueBlack: { color: '#1e293b', fontWeight: 'bold' },
     badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
     badgeBlue: { backgroundColor: '#eff6ff' },
     badgeGreen: { backgroundColor: '#f0fdf4' },

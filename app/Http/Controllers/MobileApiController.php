@@ -333,12 +333,159 @@ class MobileApiController extends Controller
         $agente = $request->user();
         $hoy = \Carbon\Carbon::today()->toDateString();
 
-        // Abonos del agente logueado registrados HOY
-        $abonosHoy = DB::table('abonos as a')
+        // Si es ADMINISTRATIVO / GERENTE (tipo_usuario = 2)
+        if ($agente->tipo_usuario == 2) {
+            $agentesAsignados = \App\Models\userAsignadoModel::where('user_id', $agente->id)
+                ->get()->pluck('admin_asignado_id')->toArray();
+            $tieneAsignados = count($agentesAsignados) > 0;
+
+            $solicitudesPendientes = \App\Models\prestamosModel::where('estado_aprobacion', 1)
+                ->where('desembolsado', 0)
+                ->when($tieneAsignados, function($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados);
+                })
+                ->count();
+
+            $desembolsosPendientes = \App\Models\prestamosModel::where('estado_aprobacion', 2)
+                ->where('desembolsado', 0)
+                ->when($tieneAsignados, function($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados);
+                })
+                ->count();
+
+            $abonosHoy = \App\Models\abonosModel::whereDate('created_at', \Carbon\Carbon::today())
+                ->where('estado', 1)
+                ->when($tieneAsignados, function($q) use ($agentesAsignados) {
+                    $q->whereHas('prestamo', function($q2) use ($agentesAsignados) {
+                        $q2->whereIn('agente_id', $agentesAsignados);
+                    });
+                })
+                ->get();
+
+            $resumen = [
+                'total_recuperado'    => 0,
+                'dia_recaudado'       => 0,
+                'mora_recaudada'      => 0,
+                'proximo_recaudado'   => 0,
+                'vencido_recaudado'   => 0,
+                'total_clientes'      => 0,
+            ];
+            $clientesUnicos = [];
+            $abonoIds = $abonosHoy->pluck('id')->toArray();
+
+            $detallesPorAbono = \DB::table('prestamo_cuota_abono as pca')
+                ->join('prestamo_coutas as pc', 'pc.id', '=', 'pca.prestamo_cuota_id')
+                ->whereIn('pca.abono_id', $abonoIds)
+                ->where('pca.estado', 1)
+                ->select('pca.abono_id', 'pca.monto_abono', 'pc.fecha_cuota')
+                ->get()
+                ->groupBy('abono_id');
+
+            foreach ($abonosHoy as $abono) {
+                $p = \App\Models\prestamosModel::find($abono->prestamo_id);
+                if (!$p) continue;
+
+                $cuotasFuturasPend = \DB::table('prestamo_coutas')
+                    ->where('prestamo_id', $p->id)
+                    ->where('fecha_cuota', '>=', date('Y-m-d'))
+                    ->whereIn('estado', [1, 2])
+                    ->count();
+
+                $totalAbonado = \DB::table('prestamo_cuota_abono as pca')
+                    ->join('prestamo_coutas as pc', 'pc.id', '=', 'pca.prestamo_cuota_id')
+                    ->where('pc.prestamo_id', $p->id)
+                    ->where('pca.estado', 1)
+                    ->sum('pca.monto_abono');
+
+                $totalCuotasMonto = \DB::table('prestamo_coutas')
+                    ->where('prestamo_id', $p->id)
+                    ->sum('monto_cuota');
+
+                $saldoPendiente = max(0, $totalCuotasMonto - $totalAbonado);
+
+                $clientesUnicos[$p->user_id] = true;
+                $monto = (float)($abono->total_abono ?? $abono->total_efectivo ?? 0);
+                if ($monto <= 0) {
+                    $monto = (float)($abono->total_tarjeta ?? 0) + (float)($abono->total_cheque ?? 0) + (float)($abono->total_transferencia ?? 0);
+                }
+                
+                $resumen['total_recuperado'] += $monto;
+
+                if ($p->estado == 3 || ($cuotasFuturasPend == 0 && $saldoPendiente > 0)) {
+                    $resumen['vencido_recaudado'] += $monto;
+                } else {
+                    $fechaAbono = substr($abono->created_at, 0, 10);
+                    $detalles = $detallesPorAbono->get($abono->id, collect());
+                    foreach ($detalles as $detalle) {
+                        $montoCuota = (float)$detalle->monto_abono;
+                        $fechaCuota = substr($detalle->fecha_cuota, 0, 10);
+                        if ($fechaCuota < $fechaAbono) {
+                            $resumen['mora_recaudada'] += $montoCuota;
+                        } elseif ($fechaCuota > $fechaAbono) {
+                            $resumen['proximo_recaudado'] += $montoCuota;
+                        } else {
+                            $resumen['dia_recaudado'] += $montoCuota;
+                        }
+                    }
+                }
+            }
+            $resumen['total_clientes'] = count($clientesUnicos);
+
+            // Recaudación por gestores (hoy)
+            $recuperacionAgentes = \App\Models\abonosModel::whereDate('created_at', \Carbon\Carbon::today())
+                ->where('estado', 1)
+                ->when($tieneAsignados, function($q) use ($agentesAsignados) {
+                    $q->whereHas('prestamo', function($q2) use ($agentesAsignados) {
+                        $q2->whereIn('agente_id', $agentesAsignados);
+                    });
+                })
+                ->select('created_user_id',
+                    \DB::raw('SUM(COALESCE(total_efectivo,0) + COALESCE(total_tarjeta,0) + COALESCE(total_cheque,0) + COALESCE(total_transferencia,0)) as total_recaudado'),
+                    \DB::raw('SUM(COALESCE(total_efectivo,0) + COALESCE(total_tarjeta,0) + COALESCE(total_cheque,0)) as cordobas'),
+                    \DB::raw('SUM(COALESCE(total_transferencia,0)) as dolares'),
+                    \DB::raw('MAX(created_at) as ultimo_pago')
+                )
+                ->groupBy('created_user_id')
+                ->get();
+
+            $recaudacionPorGestor = [];
+            foreach ($recuperacionAgentes as $ra) {
+                $gestor = \App\Models\User::find($ra->created_user_id);
+                if (!$gestor) continue;
+
+                $recaudacionPorGestor[] = [
+                    'gestorId' => $gestor->id,
+                    'gestorName' => $gestor->full_name,
+                    'totalRecaudado' => (float)$ra->total_recaudado,
+                    'cordobas' => (float)$ra->cordobas,
+                    'dolares' => (float)$ra->dolares,
+                    'ultimaCuota' => $ra->ultimo_pago,
+                    'ultimaCuotaFormateada' => \Carbon\Carbon::parse($ra->ultimo_pago)->format('H:i')
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'gestorName' => $agente->full_name,
+                    'totalRecuperacion' => round($resumen['total_recuperado'], 2),
+                    'diaRecaudado' => round($resumen['dia_recaudado'], 2),
+                    'moraRecaudada' => round($resumen['mora_recaudada'], 2),
+                    'proximoRecaudado' => round($resumen['proximo_recaudado'], 2),
+                    'vencidoRecaudado' => round($resumen['vencido_recaudado'], 2),
+                    'totalClientesCobrados' => $resumen['total_clientes'],
+                    'solicitudesPendientes' => $solicitudesPendientes,
+                    'desembolsosPendientes' => $desembolsosPendientes,
+                    'recaudacionPorGestor' => $recaudacionPorGestor
+                ]
+            ]);
+        }
+
+        // Si es GESTOR / AGENTE (original)
+        $abonosHoy = \DB::table('abonos as a')
             ->join('prestamos as p', 'p.id', '=', 'a.prestamo_id')
             ->join('users as u', 'u.id', '=', 'p.user_id')
-            // Totales del abono (capital + interes + mora + total)
-            ->leftJoin(DB::raw('(SELECT abono_id,
+            ->leftJoin(\DB::raw('(SELECT abono_id,
                                     SUM(total_capital) as capital,
                                     SUM(total_interes) as interes,
                                     SUM(total_mora)    as mora,
@@ -346,20 +493,18 @@ class MobileApiController extends Controller
                                 FROM prestamo_cuota_abono
                                 WHERE estado = 1
                                 GROUP BY abono_id) as t_pca'), 'a.id', '=', 't_pca.abono_id')
-            // Fecha de la cuota más antigua aplicada -> clasifica el tipo de cobro
-            ->leftJoin(DB::raw('(SELECT pca.abono_id, MIN(pc.fecha_cuota) as fecha_cuota_min
+            ->leftJoin(\DB::raw('(SELECT pca.abono_id, MIN(pc.fecha_cuota) as fecha_cuota_min
                                 FROM prestamo_cuota_abono pca
                                 JOIN prestamo_coutas pc ON pc.id = pca.prestamo_cuota_id
                                 WHERE pca.estado = 1
                                 GROUP BY pca.abono_id) as t_fc'), 'a.id', '=', 't_fc.abono_id')
-            // Detectar préstamos vencidos: sin cuotas futuras pendientes Y con saldo pendiente
-            ->leftJoin(DB::raw('(SELECT prestamo_id,
+            ->leftJoin(\DB::raw('(SELECT prestamo_id,
                                     COUNT(*) as cuotas_futuras_pend
                                 FROM prestamo_coutas
                                 WHERE fecha_cuota >= CURDATE()
                                   AND estado IN (1,2)
                                 GROUP BY prestamo_id) as t_fut'), 'p.id', '=', 't_fut.prestamo_id')
-            ->leftJoin(DB::raw('(SELECT pc2.prestamo_id,
+            ->leftJoin(\DB::raw('(SELECT pc2.prestamo_id,
                                     SUM(pc2.monto_cuota) as total_cuotas,
                                     COALESCE((SELECT SUM(pca2.monto_abono)
                                               FROM prestamo_cuota_abono pca2
@@ -378,18 +523,17 @@ class MobileApiController extends Controller
                 'a.id', 'a.prestamo_id', 'a.fecha_abono', 'a.tipo_abono', 'a.total_transferencia',
                 'p.estado as prestamo_estado',
                 'p.user_id as cliente_id',
-                DB::raw("CONCAT(u.nombres, ' ', u.apellidos) as cliente_nombre"),
+                \DB::raw("CONCAT(u.nombres, ' ', u.apellidos) as cliente_nombre"),
                 't_pca.capital  as total_abonado_capital',
                 't_pca.interes  as total_abonado_interes',
                 't_pca.mora     as total_abonado_mora',
                 't_pca.total    as total_abonado',
                 't_fc.fecha_cuota_min',
-                DB::raw('COALESCE(t_fut.cuotas_futuras_pend, 0) as cuotas_futuras_pend'),
-                DB::raw('COALESCE(t_saldo.total_cuotas, 0) - COALESCE(t_saldo.total_abonado_prest, 0) as saldo_pendiente_prest')
+                \DB::raw('COALESCE(t_fut.cuotas_futuras_pend, 0) as cuotas_futuras_pend'),
+                \DB::raw('COALESCE(t_saldo.total_cuotas, 0) - COALESCE(t_saldo.total_abonado_prest, 0) as saldo_pendiente_prest')
             )
             ->get();
 
-        // Clasificación idéntica a la vista web de recaudo
         $resumen = [
             'total_recuperado'    => 0,
             'total_transferencia' => 0,
@@ -399,10 +543,9 @@ class MobileApiController extends Controller
             'vencido_recaudado'   => 0,
             'total_clientes'      => 0,
         ];
-
         $clientesUnicos = [];
         $abonoIds = $abonosHoy->pluck('id')->toArray();
-        $detallesPorAbono = DB::table('prestamo_cuota_abono as pca')
+        $detallesPorAbono = \DB::table('prestamo_cuota_abono as pca')
             ->join('prestamo_coutas as pc', 'pc.id', '=', 'pca.prestamo_cuota_id')
             ->whereIn('pca.abono_id', $abonoIds)
             ->where('pca.estado', 1)
@@ -413,7 +556,6 @@ class MobileApiController extends Controller
         foreach ($abonosHoy as $abono) {
             $monto = (float) ($abono->total_abonado ?? 0);
             $clientesUnicos[$abono->cliente_id] = true;
-
             $resumen['total_recuperado']    += $monto;
             $resumen['total_transferencia'] += (float) ($abono->total_transferencia ?? 0);
 
@@ -423,11 +565,9 @@ class MobileApiController extends Controller
             } else {
                 $fechaAbono = substr($abono->fecha_abono, 0, 10);
                 $detalles   = $detallesPorAbono->get($abono->id, collect());
-
                 foreach ($detalles as $detalle) {
                     $montoCuota  = (float) $detalle->monto_abono;
                     $fechaCuota  = substr($detalle->fecha_cuota, 0, 10);
-
                     if ($fechaCuota < $fechaAbono) {
                         $resumen['mora_recaudada']    += $montoCuota;
                     } elseif ($fechaCuota > $fechaAbono) {
@@ -438,7 +578,6 @@ class MobileApiController extends Controller
                 }
             }
         }
-
         $resumen['total_clientes'] = count($clientesUnicos);
 
         return response()->json([
@@ -453,31 +592,7 @@ class MobileApiController extends Controller
             'clientes_cobrados'     => $resumen['total_clientes'],
         ]);
     }
-
-    // ─── Helper: categoría del cliente ────────────────────────────────────────
-    private function determinarCategoria(array $prestamos, string $hoy): string
-    {
-        foreach ($prestamos as $p) {
-            if ($p['pendiente_abono'] <= 0) continue;
-
-            $cuotas = $p['cuotas'] ?? [];
-
-            // Cuota del día
-            foreach ($cuotas as $c) {
-                if ($c['estado'] != 3 && $c['fecha_cuota'] === $hoy) return 'DEL_DIA';
-            }
-
-            // Mora: cuota vencida pendiente
-            foreach ($cuotas as $c) {
-                if ($c['estado'] != 3 && $c['fecha_cuota'] < $hoy) return 'EN_MORA';
-            }
-        }
-        return 'AL_DIA';
-    }
-
-
-    // ─── POST /api/mobile/recibo ──────────────────────────────────────────────
-    public function recibo(Request $request)
+public function recibo(Request $request)
     {
         $abonoId = $request->abono_id ?? $request->paymentId;
         $prestamoId = $request->prestamo_id ?? $request->creditId;
@@ -1280,6 +1395,272 @@ class MobileApiController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener departamento-municipios: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ─── ENDPOINTS ADMINISTRATIVOS / GERENCIA ─────────────────────────────────
+
+    public function requests(Request $request)
+    {
+        $user = $request->user();
+        $agentesAsignados = \App\Models\userAsignadoModel::where('user_id', $user->id)
+            ->get()->pluck('admin_asignado_id')->toArray();
+        $tieneAsignados = count($agentesAsignados) > 0;
+
+        $prestamos = \App\Models\prestamosModel::with('cliente', 'userCreado')
+            ->where('estado_aprobacion', '!=', null)
+            ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $formatted = [];
+        foreach ($prestamos as $p) {
+            $isPending = $p->estado_aprobacion == 1 && $p->desembolsado == 0;
+            $isRejectedToday = $p->estado_aprobacion == 3 && \Carbon\Carbon::parse($p->updated_at)->isToday();
+
+            if (!$isPending && !$isRejectedToday) {
+                continue;
+            }
+
+            $saldoPendiente = \App\Models\prestamosModel::where('user_id', $p->user_id)
+                ->where('estado', 1)
+                ->where('desembolsado', 1)
+                ->sum('pendiente_abono');
+
+            $formatted[] = [
+                'id' => $p->id,
+                'clientName' => $p->cliente ? $p->cliente->full_name : 'N/A',
+                'creditNumber' => $p->consecutivo ?? (string)$p->id,
+                'status' => $p->estado_aprobacion == 1 ? 'Pending' : 'Rejected',
+                'amount' => (float)$p->monto_prestamo,
+                'outstandingBalance' => (float)$saldoPendiente,
+                'termMonths' => (int)$p->plazo_pago,
+                'collectionsManager' => $p->userCreado ? $p->userCreado->full_name : 'N/A',
+                'applicationDate' => $p->created_at->toIso8601String(),
+                'rejectionReason' => $p->comentarios_rechazado ?? '',
+                'rejectedBy' => $p->userAprobado ? $p->userAprobado->full_name : 'N/A'
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'requests' => $formatted
+        ]);
+    }
+
+    public function approveCredit(Request $request)
+    {
+        $request->validate([
+            'creditId' => 'required',
+        ]);
+
+        try {
+            $prestamoId = $request->creditId;
+            $user = $request->user();
+
+            $prestamo = \App\Models\prestamosModel::find($prestamoId);
+            if (!$prestamo) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontró la solicitud.'
+                ], 404);
+            }
+
+            $prestamo->estado_aprobacion = 2; // Aprobado
+            $prestamo->updated_user_id = $user->id;
+            $prestamo->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Solicitud aprobada exitosamente.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al aprobar solicitud: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function rejectCredit(Request $request)
+    {
+        $request->validate([
+            'creditId' => 'required',
+            'reason' => 'required|string',
+        ]);
+
+        try {
+            $prestamoId = $request->creditId;
+            $user = $request->user();
+
+            $prestamo = \App\Models\prestamosModel::find($prestamoId);
+            if (!$prestamo) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontró la solicitud.'
+                ], 404);
+            }
+
+            $prestamo->estado_aprobacion = 3; // Rechazado
+            $prestamo->comentarios_rechazado = $request->reason;
+            $prestamo->updated_user_id = $user->id;
+            $prestamo->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Solicitud rechazada exitosamente.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al rechazar solicitud: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function disbursements(Request $request)
+    {
+        $user = $request->user();
+        $agentesAsignados = \App\Models\userAsignadoModel::where('user_id', $user->id)
+            ->get()->pluck('admin_asignado_id')->toArray();
+        $tieneAsignados = count($agentesAsignados) > 0;
+
+        $prestamos = \App\Models\prestamosModel::with('cliente', 'userCreado')
+            ->where(function ($q) {
+                $q->where(function ($sub) {
+                    $sub->where('estado_aprobacion', 2)
+                        ->where('desembolsado', 0);
+                })
+                ->orWhere(function ($sub) {
+                    $sub->where('desembolsado', 1)
+                        ->whereDate('fecha_desembolso', \Carbon\Carbon::today());
+                })
+                ->orWhere(function ($sub) {
+                    $sub->where('estado_aprobacion', 3)
+                        ->whereDate('updated_at', \Carbon\Carbon::today());
+                });
+            })
+            ->when($tieneAsignados, function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
+            })
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $formatted = [];
+        foreach ($prestamos as $p) {
+            $status = 'Approved';
+            if ($p->desembolsado == 1) {
+                $status = 'Active';
+            } elseif ($p->estado_aprobacion == 3) {
+                $status = 'Rejected';
+            }
+
+            $saldoPendiente = \App\Models\prestamosModel::where('user_id', $p->user_id)
+                ->where('estado', 1)
+                ->where('desembolsado', 1)
+                ->where('id', '!=', $p->id)
+                ->sum('pendiente_abono');
+
+            $formatted[] = [
+                'id' => $p->id,
+                'clientName' => $p->cliente ? $p->cliente->full_name : 'N/A',
+                'creditNumber' => $p->consecutivo ?? (string)$p->id,
+                'status' => $status,
+                'amount' => (float)$p->monto_prestamo,
+                'totalAmount' => (float)$p->monto_financiado,
+                'outstandingBalance' => (float)$saldoPendiente,
+                'termMonths' => (int)$p->plazo_pago,
+                'collectionsManager' => $p->userCreado ? $p->userCreado->full_name : 'N/A',
+                'applicationDate' => $p->created_at->toIso8601String(),
+                'disbursementDate' => $p->fecha_desembolso ? $p->fecha_desembolso : null,
+                'rejectionReason' => $p->comentarios_rechazado ?? '',
+                'rejectedBy' => $p->userAprobado ? $p->userAprobado->full_name : 'N/A'
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'disbursements' => $formatted
+        ]);
+    }
+
+    public function disburseCredit(Request $request)
+    {
+        $request->validate([
+            'creditId' => 'required',
+        ]);
+
+        try {
+            $prestamoId = $request->creditId;
+            $user = $request->user();
+
+            $prestamo = \App\Models\prestamosModel::find($prestamoId);
+            if (!$prestamo) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontró el préstamo.'
+                ], 404);
+            }
+
+            if ($prestamo->estado_aprobacion == 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Para desembolsar este préstamo primero tiene que aprobar la solicitud.'
+                ], 400);
+            }
+
+            $prestamo->desembolsado = 1;
+            $prestamo->user_desembolso = $user->id;
+            $prestamo->fecha_desembolso = date('Y-m-d');
+            $prestamo->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Préstamo desembolsado exitosamente.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al desembolsar préstamo: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function denyDisbursement(Request $request)
+    {
+        $request->validate([
+            'creditId' => 'required',
+            'reason' => 'required|string',
+        ]);
+
+        try {
+            $prestamoId = $request->creditId;
+            $user = $request->user();
+
+            $prestamo = \App\Models\prestamosModel::find($prestamoId);
+            if (!$prestamo) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontró el préstamo.'
+                ], 404);
+            }
+
+            $prestamo->estado_aprobacion = 3; // Rechazado / Cancelado
+            $prestamo->comentarios_rechazado = $request->reason;
+            $prestamo->updated_user_id = $user->id;
+            $prestamo->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Desembolso denegado y préstamo cancelado.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al denegar desembolso: ' . $e->getMessage()
             ], 500);
         }
     }
