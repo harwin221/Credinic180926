@@ -902,7 +902,8 @@ class prestamosController extends Controller
             $cuota->save();
 
             // Sincronizar la fecha de referencia con la fecha real asignada
-            $fechaReferencia = $fechaReal->copy();
+            // Comentado para evitar el efecto arrastre de feriados y domingos.
+            //  = ->copy();
 
             // 6. Mover REFERENCIA
             if ($formaPago === "3" && $diasPreferidosQuincenal > 0) {

@@ -27,22 +27,102 @@ const DESTINATION_TYPES = [
     { label: 'Comercio', value: '1' },
     { label: 'Personales/Consumo', value: '2' },
     { label: 'Servicios', value: '3' },
-    { label: 'Vivienda (Compra/Mejora)', value: '4' },
+    { label: 'Vivienda (Compra, Mejora, Ampliación, Remodelación, Otros)', value: '4' },
     { label: 'Construcción', value: '5' },
     { label: 'Industria', value: '6' },
     { label: 'Pesca', value: '7' },
-    { label: 'Agropecuario', value: '8' },
+    { label: 'Agricultura y Ganadería', value: '8' },
     { label: 'Otros', value: '9' },
 ];
 
 const WEEK_DAYS = [
-    { label: 'Lun', value: '1' },
-    { label: 'Mar', value: '2' },
-    { label: 'Mié', value: '3' },
-    { label: 'Jue', value: '4' },
-    { label: 'Vie', value: '5' },
-    { label: 'Sáb', value: '6' },
+    { label: 'Lunes', value: '1' },
+    { label: 'Martes', value: '2' },
+    { label: 'Miércoles', value: '3' },
+    { label: 'Jueves', value: '4' },
+    { label: 'Viernes', value: '5' },
+    { label: 'Sábado', value: '6' },
 ];
+
+interface DropdownOption {
+    label: string;
+    value: string;
+}
+
+interface DropdownSelectorProps {
+    label: string;
+    options: DropdownOption[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+    placeholder?: string;
+}
+
+function DropdownSelector({ label, options, selectedValue, onSelect, placeholder = 'Seleccione...' }: DropdownSelectorProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectedOption = options.find(opt => opt.value === selectedValue);
+
+    return (
+        <View style={{ marginBottom: 14 }}>
+            <Text style={styles.label}>{label}</Text>
+            <TouchableOpacity 
+                style={styles.dropdownButton} 
+                onPress={() => setIsOpen(true)}
+            >
+                <Text style={[styles.dropdownButtonText, !selectedOption && { color: '#94a3b8' }]}>
+                    {selectedOption ? selectedOption.label : placeholder}
+                </Text>
+                <MaterialCommunityIcons name="chevron-down" size={20} color="#64748b" />
+            </TouchableOpacity>
+
+            <Modal
+                visible={isOpen}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setIsOpen(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.dropdownOverlay} 
+                    activeOpacity={1} 
+                    onPress={() => setIsOpen(false)}
+                >
+                    <View style={styles.dropdownModalContainer}>
+                        <View style={styles.dropdownHeader}>
+                            <Text style={styles.dropdownTitle}>Seleccione {label}</Text>
+                            <TouchableOpacity onPress={() => setIsOpen(false)}>
+                                <MaterialCommunityIcons name="close" size={20} color="#64748b" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={styles.dropdownList} keyboardShouldPersistTaps="handled">
+                            {options.map(opt => (
+                                <TouchableOpacity
+                                    key={opt.value}
+                                    style={[
+                                        styles.dropdownOption,
+                                        opt.value === selectedValue && styles.dropdownOptionActive
+                                    ]}
+                                    onPress={() => {
+                                        onSelect(opt.value);
+                                        setIsOpen(false);
+                                    }}
+                                >
+                                    <Text style={[
+                                        styles.dropdownOptionText,
+                                        opt.value === selectedValue && styles.dropdownOptionTextActive
+                                    ]}>
+                                        {opt.label}
+                                    </Text>
+                                    {opt.value === selectedValue && (
+                                        <MaterialCommunityIcons name="check" size={18} color="#0ea5e9" />
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </View>
+    );
+}
 
 export default function CreditFormModal({ visible, onClose, client, onSuccess }: CreditFormModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -265,37 +345,23 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                             contentContainerStyle={styles.formScrollContent}
                             keyboardShouldPersistTaps="handled"
                         >
-                            {/* Tipo de Préstamo */}
-                            <Text style={styles.label}>Tipo de Préstamo</Text>
-                            <View style={styles.pillContainer}>
-                                {LOAN_TYPES.map(type => (
-                                    <TouchableOpacity
-                                        key={type.value}
-                                        style={[styles.pillOption, formData.tipoPrestamo === type.value && styles.pillOptionActive]}
-                                        onPress={() => setFormData({ ...formData, tipoPrestamo: type.value })}
-                                    >
-                                        <Text style={[styles.pillOptionText, formData.tipoPrestamo === type.value && styles.pillOptionTextActive]}>
-                                            {type.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                            {/* Tipo de Préstamo - Dropdown */}
+                            <DropdownSelector
+                                label="Tipo de Préstamo"
+                                options={LOAN_TYPES}
+                                selectedValue={formData.tipoPrestamo}
+                                onSelect={(val) => setFormData({ ...formData, tipoPrestamo: val })}
+                                placeholder="Seleccione Tipo de Préstamo"
+                            />
 
-                            {/* Tipo de Destino */}
-                            <Text style={styles.label}>Tipo de Destino</Text>
-                            <View style={styles.gridContainer}>
-                                {DESTINATION_TYPES.map(dest => (
-                                    <TouchableOpacity
-                                        key={dest.value}
-                                        style={[styles.gridOption, formData.tipoDestino === dest.value && styles.gridOptionActive]}
-                                        onPress={() => setFormData({ ...formData, tipoDestino: dest.value })}
-                                    >
-                                        <Text style={[styles.gridOptionText, formData.tipoDestino === dest.value && styles.gridOptionTextActive]}>
-                                            {dest.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                            {/* Tipo de Destino - Dropdown */}
+                            <DropdownSelector
+                                label="Tipo de Destino"
+                                options={DESTINATION_TYPES}
+                                selectedValue={formData.tipoDestino}
+                                onSelect={(val) => setFormData({ ...formData, tipoDestino: val })}
+                                placeholder="Seleccione Tipo de Destino"
+                            />
 
                             {/* Monto */}
                             <Text style={styles.label}>Monto del Crédito (C$)</Text>
@@ -351,24 +417,15 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                                 ))}
                             </View>
 
-                            {/* Día de la Semana (Solo para Semanal o Catorcenal) */}
+                            {/* Día de la Semana Pactado (Solo para Semanal o Catorcenal) - Dropdown */}
                             {(formData.paymentFrequency === 'Semanal' || formData.paymentFrequency === 'Catorcenal') && (
-                                <>
-                                    <Text style={styles.label}>Día de la Semana pactado</Text>
-                                    <View style={styles.pickerContainer}>
-                                        {WEEK_DAYS.map(day => (
-                                            <TouchableOpacity
-                                                key={day.value}
-                                                style={[styles.dayOption, formData.diaSemanaPreferido === day.value && styles.dayOptionActive]}
-                                                onPress={() => setFormData({ ...formData, diaSemanaPreferido: day.value })}
-                                            >
-                                                <Text style={[styles.dayOptionText, formData.diaSemanaPreferido === day.value && styles.dayOptionTextActive]}>
-                                                    {day.label}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                </>
+                                <DropdownSelector
+                                    label="Día de la Semana pactado"
+                                    options={WEEK_DAYS}
+                                    selectedValue={formData.diaSemanaPreferido}
+                                    onSelect={(val) => setFormData({ ...formData, diaSemanaPreferido: val })}
+                                    placeholder="Seleccione Día de la Semana"
+                                />
                             )}
 
                             {/* Día Preferido (Solo para Quincenal) */}
@@ -382,7 +439,6 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                                         maxLength={2}
                                         value={formData.diaPagoPreferido}
                                         onChangeText={(text) => {
-                                            // Solo números
                                             const cleaned = text.replace(/[^0-9]/g, '');
                                             setFormData({ ...formData, diaPagoPreferido: cleaned });
                                         }}
@@ -474,7 +530,7 @@ const styles = StyleSheet.create({
         borderColor: '#e2e8f0',
         minHeight: 48,
     },
-    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
     pickerOption: {
         paddingHorizontal: 14,
         paddingVertical: 10,
@@ -489,63 +545,87 @@ const styles = StyleSheet.create({
     },
     pickerOptionText: { fontSize: 13, color: '#64748b', fontWeight: '700' },
     pickerOptionTextActive: { color: '#fff' },
-    
-    // Contenedor de píldoras para Tipo Préstamo
-    pillContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    pillOption: {
-        flex: 1,
-        minWidth: '45%',
-        paddingVertical: 10,
+
+    // Estilos del Dropdown Selector (Menú desplegable)
+    dropdownButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#f8fafc',
         borderRadius: 10,
-        backgroundColor: '#f8fafc',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
         borderWidth: 1,
-        borderColor: '#cbd5e1',
-        alignItems: 'center',
-        justifyContent: 'center',
+        borderColor: '#e2e8f0',
+        minHeight: 48,
     },
-    pillOptionActive: {
-        backgroundColor: '#0f172a',
-        borderColor: '#0f172a',
+    dropdownButtonText: {
+        fontSize: 15,
+        color: '#334155',
+        fontWeight: '600',
     },
-    pillOptionText: { fontSize: 13, color: '#475569', fontWeight: '600' },
-    pillOptionTextActive: { color: '#fff', fontWeight: '700' },
-
-    // Contenedor Grid para Tipo Destino
-    gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    gridOption: {
-        width: '48%',
-        paddingVertical: 10,
-        paddingHorizontal: 8,
-        borderRadius: 8,
-        backgroundColor: '#f8fafc',
-        borderWidth: 1,
-        borderColor: '#cbd5e1',
-        justifyContent: 'center',
-    },
-    gridOptionActive: {
-        backgroundColor: '#0284c7',
-        borderColor: '#0284c7',
-    },
-    gridOptionText: { fontSize: 12, color: '#475569', fontWeight: '600' },
-    gridOptionTextActive: { color: '#fff', fontWeight: '700' },
-
-    // Opciones del Día de la semana
-    dayOption: {
+    dropdownOverlay: {
         flex: 1,
-        minWidth: '30%',
-        paddingVertical: 10,
-        borderRadius: 8,
-        backgroundColor: '#f1f5f9',
-        borderWidth: 1,
-        borderColor: '#cbd5e1',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
         alignItems: 'center',
+        padding: 20,
     },
-    dayOptionActive: {
-        backgroundColor: '#f59e0b',
-        borderColor: '#f59e0b',
+    dropdownModalContainer: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        width: '100%',
+        maxHeight: '75%',
+        padding: 18,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        elevation: 6,
     },
-    dayOptionText: { fontSize: 13, color: '#475569', fontWeight: '600' },
-    dayOptionTextActive: { color: '#fff', fontWeight: '700' },
+    dropdownHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderBottomColor: '#f1f5f9',
+        paddingBottom: 12,
+        marginBottom: 12,
+    },
+    dropdownTitle: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#0f172a',
+        textTransform: 'uppercase',
+    },
+    dropdownList: {
+        maxHeight: 350,
+    },
+    dropdownOption: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        marginBottom: 6,
+        backgroundColor: '#f8fafc',
+        borderWidth: 1,
+        borderColor: '#f1f5f9',
+    },
+    dropdownOptionActive: {
+        backgroundColor: '#ecfafd',
+        borderColor: '#bae6fd',
+    },
+    dropdownOptionText: {
+        fontSize: 14,
+        color: '#334155',
+        fontWeight: '600',
+    },
+    dropdownOptionTextActive: {
+        color: '#0369a1',
+        fontWeight: '800',
+    },
 
     dateButton: {
         flexDirection: 'row',
