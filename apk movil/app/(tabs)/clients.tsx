@@ -15,7 +15,13 @@ const fmt = (n: any) => (Number(n) || 0).toLocaleString('es-NI', { minimumFracti
 const formatDate = (dateValue: any) => {
     if (!dateValue) return 'N/A';
     try {
-        const d = typeof dateValue === 'string' ? new Date(dateValue.replace(' ', 'T')) : new Date(dateValue);
+        const str = String(dateValue).trim();
+        const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+            const [, y, m, d] = match;
+            return `${d}/${m}/${y}`;
+        }
+        const d = new Date(dateValue);
         if (isNaN(d.getTime())) return 'N/A';
         return d.toLocaleDateString('es-NI', { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch (e) {
@@ -277,17 +283,13 @@ export default function ClientsScreen() {
                             <ScrollView showsVerticalScrollIndicator={false}>
                                 {activeDetailTab === 'detalles' && (
                                     <>
-                                        {/* Info básica del cliente */}
+                                        {/* Info básica del cliente (sin código) */}
                                         <View style={styles.sectionHeader}>
                                             <Text style={styles.sectionTitle}>Datos del Cliente</Text>
                                         </View>
                                         <View style={styles.detailSection}>
-                                            <Text style={styles.detailLabel}>Código</Text>
-                                            <Text style={styles.detailValue}>{clientDetail.client.clientNumber}</Text>
-                                        </View>
-                                        <View style={styles.detailSection}>
                                             <Text style={styles.detailLabel}>Cédula</Text>
-                                            <Text style={styles.detailValue}>{clientDetail.client.cedula}</Text>
+                                            <Text style={styles.detailValue}>{clientDetail.client.cedula || 'N/A'}</Text>
                                         </View>
                                         <View style={styles.detailSection}>
                                             <Text style={styles.detailLabel}>Teléfono</Text>
@@ -295,127 +297,98 @@ export default function ClientsScreen() {
                                         </View>
                                         <View style={styles.detailSection}>
                                             <Text style={styles.detailLabel}>Dirección Domiciliar</Text>
-                                            <Text style={styles.detailValue}>{clientDetail.client.address || clientDetail.client.neighborhood + ', ' + clientDetail.client.municipality}</Text>
+                                            <Text style={styles.detailValue}>{clientDetail.client.address || (clientDetail.client.neighborhood + ', ' + clientDetail.client.municipality)}</Text>
                                         </View>
 
-                                        {/* Créditos activos */}
-                                        {clientDetail.credits.length > 0 ? clientDetail.credits.map((credit: any) => (
-                                            <View key={`detail_credit_${credit.id}_${credit.creditNumber || ''}`} style={styles.creditCard}>
-                                                <Text style={styles.creditTitle}>Crédito #{credit.creditNumber}</Text>
-                                                
-                                                {/* Configuración del Préstamo */}
-                                                <View style={styles.sectionHeader}>
-                                                    <Text style={styles.sectionSubtitle}>Configuración del Préstamo</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Tipo de producto:</Text>
-                                                    <Text style={styles.creditValue}>{credit.productType || 'N/A'}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Sub Producto:</Text>
-                                                    <Text style={styles.creditValue}>{credit.subProduct || 'N/A'}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Destino del producto:</Text>
-                                                    <Text style={styles.creditValue}>{credit.productDestination || 'N/A'}</Text>
-                                                </View>
+                                        {/* Crédito activo */}
+                                        {clientDetail.credits.length > 0 ? (
+                                            (() => {
+                                                const credit = clientDetail.credits[0];
+                                                return (
+                                                    <View key={`detail_credit_${credit.id}_${credit.creditNumber || ''}`} style={styles.creditCard}>
+                                                        <Text style={styles.creditTitle}>Crédito #{credit.creditNumber}</Text>
 
-                                                {/* Intereses y plazos */}
-                                                <View style={styles.sectionHeader}>
-                                                    <Text style={styles.sectionSubtitle}>Intereses y plazos</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Tasa Interés Corriente:</Text>
-                                                    <Text style={styles.creditValue}>{credit.interestRate}%</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Tipo de Moneda:</Text>
-                                                    <Text style={styles.creditValue}>{credit.currency}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Periodicidad:</Text>
-                                                    <Text style={styles.creditValue}>{credit.paymentFrequency}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Plazo:</Text>
-                                                    <Text style={styles.creditValue}>{credit.termMonths} meses</Text>
-                                                </View>
+                                                        {/* Intereses y Plazos */}
+                                                        <View style={styles.sectionHeader}>
+                                                            <Text style={styles.sectionSubtitle}>Intereses y Plazos</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Tasa de Interés % (Mensual):</Text>
+                                                            <Text style={styles.creditValue}>{credit.interestRate}%</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Periodicidad:</Text>
+                                                            <Text style={styles.creditValue}>{credit.paymentFrequency}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Plazo:</Text>
+                                                            <Text style={styles.creditValue}>{credit.termMonths} meses</Text>
+                                                        </View>
 
-                                                {/* Datos del Préstamo */}
-                                                <View style={styles.sectionHeader}>
-                                                    <Text style={styles.sectionSubtitle}>Datos del Préstamo</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Monto Principal:</Text>
-                                                    <Text style={styles.creditValue}>C$ {fmt(credit.amount)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Monto Total del Crédito:</Text>
-                                                    <Text style={[styles.creditValue, { fontWeight: '800' }]}>C$ {fmt(credit.totalAmount)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Cuota a Pagar:</Text>
-                                                    <Text style={styles.creditValue}>C$ {fmt(credit.installmentAmount)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Fecha de Entrega:</Text>
-                                                    <Text style={styles.creditValue}>{formatDate(credit.disbursementDate)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Fecha de Primera Cuota:</Text>
-                                                    <Text style={styles.creditValue}>{formatDate(credit.firstPaymentDate)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Fecha de Vencimiento:</Text>
-                                                    <Text style={styles.creditValue}>{formatDate(credit.dueDate)}</Text>
-                                                </View>
+                                                        {/* Datos del Préstamo */}
+                                                        <View style={styles.sectionHeader}>
+                                                            <Text style={styles.sectionSubtitle}>Datos del Préstamo</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Monto Principal:</Text>
+                                                            <Text style={styles.creditValue}>C$ {fmt(credit.amount)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Monto Total del Crédito:</Text>
+                                                            <Text style={[styles.creditValue, { fontWeight: '800' }]}>C$ {fmt(credit.totalAmount)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Cuota a Pagar:</Text>
+                                                            <Text style={styles.creditValue}>C$ {fmt(credit.installmentAmount)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Fecha de Entrega:</Text>
+                                                            <Text style={styles.creditValue}>{formatDate(credit.disbursementDate)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Fecha de Primera Cuota:</Text>
+                                                            <Text style={styles.creditValue}>{formatDate(credit.firstPaymentDate)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Fecha Último Pago:</Text>
+                                                            <Text style={styles.creditValue}>{formatDate(credit.dueDate)}</Text>
+                                                        </View>
 
-                                                {/* Información de Gestión */}
-                                                <View style={styles.sectionHeader}>
-                                                    <Text style={styles.sectionSubtitle}>Información de Gestión</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Gestor de Cobro:</Text>
-                                                    <Text style={styles.creditValue}>{credit.collectionsManager}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Sucursal:</Text>
-                                                    <Text style={styles.creditValue}>{credit.branchName || 'N/A'}</Text>
-                                                </View>
-
-                                                {/* Estado del Crédito */}
-                                                <View style={styles.divider} />
-                                                <View style={styles.sectionHeader}>
-                                                    <Text style={styles.sectionSubtitle}>Estado del Crédito</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Total Pagado:</Text>
-                                                    <Text style={[styles.creditValue, { color: '#10b981', fontWeight: '800' }]}>C$ {fmt(credit.totalPaid)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Saldo pendiente:</Text>
-                                                    <Text style={[styles.creditValue, { color: '#e11d48', fontWeight: '800' }]}>C$ {fmt(credit.remainingBalance)}</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Monto en mora:</Text>
-                                                    <Text style={[styles.creditValue, { color: credit.overdueAmount > 0 ? '#f97316' : '#10b981' }]}>C$ {fmt(credit.overdueAmount)}</Text>
-                                                </View>
-                                                <View style={styles.divider} />
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Días atraso actual:</Text>
-                                                    <Text style={[styles.creditValue, { color: credit.lateDays > 0 ? '#e11d48' : '#10b981', fontWeight: '800' }]}>{credit.lateDays} días</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Promedio atraso (crédito):</Text>
-                                                    <Text style={[styles.creditValue, { color: Number(credit.avgLateDaysCurrentCredit) > 0 ? '#f97316' : '#10b981' }]}>{credit.avgLateDaysCurrentCredit} días</Text>
-                                                </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Promedio atraso (global):</Text>
-                                                    <Text style={[styles.creditValue, { color: Number(credit.avgLateDaysGlobal) > 0 ? '#f97316' : '#10b981' }]}>{credit.avgLateDaysGlobal} días</Text>
-                                                </View>
-                                            </View>
-                                        )) : (
-                                            <Text style={styles.emptyText}>Sin créditos activos.</Text>
+                                                        {/* Estado del Crédito */}
+                                                        <View style={styles.divider} />
+                                                        <View style={styles.sectionHeader}>
+                                                            <Text style={styles.sectionSubtitle}>Estado del Crédito</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Total Pagado:</Text>
+                                                            <Text style={[styles.creditValue, { color: '#10b981', fontWeight: '800' }]}>C$ {fmt(credit.totalPaid)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Saldo Pendiente:</Text>
+                                                            <Text style={[styles.creditValue, { color: '#e11d48', fontWeight: '800' }]}>C$ {fmt(credit.remainingBalance)}</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Monto en Mora:</Text>
+                                                            <Text style={[styles.creditValue, { color: credit.overdueAmount > 0 ? '#f97316' : '#10b981', fontWeight: '800' }]}>C$ {fmt(credit.overdueAmount)}</Text>
+                                                        </View>
+                                                        <View style={styles.divider} />
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Total Días Atraso Actual:</Text>
+                                                            <Text style={[styles.creditValue, { color: credit.lateDays > 0 ? '#e11d48' : '#10b981', fontWeight: '800' }]}>{credit.lateDays} días</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Promedio Atraso (Crédito Actual):</Text>
+                                                            <Text style={[styles.creditValue, { color: Number(credit.avgLateDaysCurrentCredit) > 0 ? '#f97316' : '#10b981', fontWeight: '700' }]}>{credit.avgLateDaysCurrentCredit} días</Text>
+                                                        </View>
+                                                        <View style={styles.creditRow}>
+                                                            <Text style={styles.creditLabel}>Promedio Atraso Global:</Text>
+                                                            <Text style={[styles.creditValue, { color: Number(credit.avgLateDaysGlobal) > 0 ? '#f97316' : '#10b981', fontWeight: '700' }]}>{credit.avgLateDaysGlobal} días</Text>
+                                                        </View>
+                                                    </View>
+                                                );
+                                            })()
+                                        ) : (
+                                            <Text style={styles.emptyText}>Sin créditos registrados.</Text>
                                         )}
                                     </>
                                 )}
@@ -426,70 +399,72 @@ export default function ClientsScreen() {
                                             <Text style={styles.sectionTitle}>Plan de Pago</Text>
                                         </View>
                                         
-                                        {/* Tabla de Plan de Pago con scroll horizontal */}
+                                        {/* Tabla de Plan de Pago idéntica al reporte web */}
                                         <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableScrollContainer}>
                                             <View style={styles.tableContainer}>
                                                 {/* Header de la tabla */}
                                                 <View style={styles.tableHeader}>
-                                                    <Text style={[styles.tableHeaderText, styles.colNumberFixed]}>#</Text>
-                                                    <Text style={[styles.tableHeaderText, styles.colDateFixed]}>Fecha</Text>
-                                                    <Text style={[styles.tableHeaderText, styles.colAmountFixed]}>Capital</Text>
-                                                    <Text style={[styles.tableHeaderText, styles.colAmountFixed]}>Interés</Text>
-                                                    <Text style={[styles.tableHeaderText, styles.colAmountFixed]}>Cuota</Text>
-                                                    <Text style={[styles.tableHeaderText, styles.colAmountFixed]}>Saldo</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 38, textAlign: 'center' }]}>#</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 95, textAlign: 'center' }]}>Fecha Cuota</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 95, textAlign: 'right' }]}>Valor Cuota</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 105, textAlign: 'right' }]}>Saldo Anterior</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 105, textAlign: 'right' }]}>Nuevo Saldo</Text>
+                                                    <Text style={[styles.tableHeaderText, { width: 85, textAlign: 'center' }]}>Estado</Text>
                                                 </View>
                                                 
-                                                {/* Filas de la tabla */}
+                                                {/* Filas del cronograma */}
                                                 {clientDetail.credits[0].paymentPlan?.map((plan: any, index: number) => (
                                                     <View key={index} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
-                                                        <Text style={[styles.tableCellText, styles.colNumberFixed]}>{plan.paymentNumber}</Text>
-                                                        <Text style={[styles.tableCellText, styles.colDateFixed]}>{formatDate(plan.paymentDate)}</Text>
-                                                        <Text style={[styles.tableCellText, styles.colAmountFixed]}>C${fmt(plan.principal)}</Text>
-                                                        <Text style={[styles.tableCellText, styles.colAmountFixed]}>C${fmt(plan.interest)}</Text>
-                                                        <Text style={[styles.tableCellText, styles.colAmountFixed, { fontWeight: '700' }]}>C${fmt(plan.amount)}</Text>
-                                                        <Text style={[styles.tableCellText, styles.colAmountFixed]}>C${fmt(plan.balance)}</Text>
+                                                        <Text style={[styles.tableCellText, { width: 38, textAlign: 'center' }]}>{plan.paymentNumber}</Text>
+                                                        <Text style={[styles.tableCellText, { width: 95, textAlign: 'center' }]}>{formatDate(plan.paymentDate)}</Text>
+                                                        <Text style={[styles.tableCellText, { width: 95, textAlign: 'right', fontWeight: '700', color: '#0284c7' }]}>C$ {fmt(plan.amount)}</Text>
+                                                        <Text style={[styles.tableCellText, { width: 105, textAlign: 'right', color: '#64748b' }]}>C$ {fmt(plan.saldoAnterior ?? plan.balance)}</Text>
+                                                        <Text style={[styles.tableCellText, { width: 105, textAlign: 'right', fontWeight: '600' }]}>C$ {fmt(plan.balance)}</Text>
+                                                        <View style={[{ width: 85, alignItems: 'center' }]}>
+                                                            <Text style={[
+                                                                { fontSize: 11, fontWeight: '700' },
+                                                                plan.status === 'PAGADA' ? { color: '#16a34a' } : plan.status === 'PARCIAL' ? { color: '#ea580c' } : { color: '#dc2626' }
+                                                            ]}>
+                                                                {plan.status}
+                                                            </Text>
+                                                        </View>
                                                     </View>
                                                 ))}
                                             </View>
                                         </ScrollView>
-                                        <Text style={styles.scrollHint}>← Desliza para ver más →</Text>
                                     </>
                                 )}
 
                                 {activeDetailTab === 'historial' && clientDetail.credits.length > 0 && (
                                     <>
                                         <View style={styles.sectionHeader}>
-                                            <Text style={styles.sectionTitle}>Historial de Pagos</Text>
+                                            <Text style={styles.sectionTitle}>Historial de Pagos y Abonos</Text>
                                         </View>
-                                        {clientDetail.credits[0].paymentHistory?.length > 0 ? clientDetail.credits[0].paymentHistory.map((payment: any) => (
-                                            <View key={`payment_${payment.id}_${payment.receiptNumber || ''}`} style={styles.paymentCard}>
+                                        {clientDetail.credits[0].paymentHistory?.length > 0 ? clientDetail.credits[0].paymentHistory.map((payment: any, index: number) => (
+                                            <View key={`payment_${payment.id}_${index}`} style={styles.paymentCard}>
                                                 <View style={styles.paymentHeader}>
-                                                    <Text style={styles.paymentAmount}>C$ {fmt(payment.amount)}</Text>
+                                                    <View>
+                                                        <Text style={styles.paymentAmount}>C$ {fmt(payment.amount)}</Text>
+                                                        <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{payment.receiptNumber}</Text>
+                                                    </View>
                                                     <Text style={[styles.paymentStatus, payment.status === 'ANULADO' ? styles.statusAnulado : styles.statusValido]}>
                                                         {payment.status}
                                                     </Text>
                                                 </View>
                                                 <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Fecha:</Text>
+                                                    <Text style={styles.creditLabel}>Fecha de Pago:</Text>
                                                     <Text style={styles.creditValue}>{formatDate(payment.paymentDate)}</Text>
                                                 </View>
                                                 <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Recibo:</Text>
-                                                    <Text style={styles.creditValue}>{payment.transactionNumber}</Text>
+                                                    <Text style={styles.creditLabel}>Recibido por:</Text>
+                                                    <Text style={styles.creditValue}>{payment.receivedBy || 'Agente'}</Text>
                                                 </View>
-                                                <View style={styles.creditRow}>
-                                                    <Text style={styles.creditLabel}>Gestionado por:</Text>
-                                                    <Text style={styles.creditValue}>{payment.managedBy}</Text>
-                                                </View>
-                                                {payment.notes && (
-                                                    <View style={styles.creditRow}>
-                                                        <Text style={styles.creditLabel}>Notas:</Text>
-                                                        <Text style={styles.creditValue}>{payment.notes}</Text>
-                                                    </View>
-                                                )}
                                             </View>
                                         )) : (
-                                            <Text style={styles.emptyText}>Sin pagos registrados.</Text>
+                                            <View style={styles.emptyContainer}>
+                                                <MaterialCommunityIcons name="receipt" size={40} color="#cbd5e1" />
+                                                <Text style={[styles.emptyText, { marginTop: 8 }]}>No se han registrado abonos para este préstamo.</Text>
+                                            </View>
                                         )}
                                     </>
                                 )}

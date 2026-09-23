@@ -838,7 +838,7 @@ class MobileApiController extends Controller
     }
 
     // ─── GET /api/mobile/cliente-detalle ───────────────────────────────────────
-    // Detalle completo del cliente, sus préstamos, plan de pagos e historial
+    // Detalle completo del cliente, préstamo activo (o más reciente), plan de pagos e historial de abonos
     public function clienteDetalle(Request $request)
     {
         $clientId = $request->get('clientId', $request->get('id'));
@@ -851,9 +851,11 @@ class MobileApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Cliente no encontrado'], 404);
         }
 
-        $prestamos = prestamosModel::with([
+        // Obtener préstamos desembolsados del cliente
+        $todosPrestamos = prestamosModel::with([
                 'cuotas' => function($q) { $q->orderBy('numero_cuota', 'asc'); },
-                'abonos' => function($q) { $q->where('estado', 1)->orderBy('id', 'desc'); }
+                'abonos' => function($q) { $q->where('estado', 1)->orderBy('fecha_abono', 'asc')->orderBy('id', 'asc'); },
+                'abonos.user_create'
             ])
             ->where('user_id', $cliente->id)
             ->whereNull('fecha_clasificacion')
@@ -861,54 +863,156 @@ class MobileApiController extends Controller
             ->orderBy('id', 'desc')
             ->get();
 
+        // ── Calcular Promedio de Días de Atraso Global (suma de promedios de todos los créditos / total de créditos)
+        $totalPromediosCreditos = 0;
+        $conteoCreditosConPromedio = 0;
+
+        foreach ($todosPrestamos as $prest) {
+            $totalDiasAtrasoP = 0;
+            $totalCuotasP = $prest->cuotas->count();
+            foreach ($prest->cuotas as $cuotaAtraso) {
+                $fechaPlanCuotaP = \Carbon\Carbon::parse($cuotaAtraso->fecha_cuota);
+                if ($cuotaAtraso->estado == 3) {
+                    $ultimoAbonoP = \App\Models\prestamoCuotaAbonoModel::where('prestamo_cuota_id', $cuotaAtraso->id)
+                        ->where('estado', 1)
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+                    if ($ultimoAbonoP) {
+                        $fechaPagoRealP = \Carbon\Carbon::parse($ultimoAbonoP->created_at);
+                        $diasAtrasoP = $fechaPlanCuotaP->diffInDays($fechaPagoRealP, false);
+                        if ($diasAtrasoP > 0) $totalDiasAtrasoP += $diasAtrasoP;
+                    }
+                } elseif (in_array($cuotaAtraso->estado, [1, 2]) && $fechaPlanCuotaP->isPast()) {
+                    $diasAtrasoP = $fechaPlanCuotaP->diffInDays(\Carbon\Carbon::now(), false);
+                    if ($diasAtrasoP > 0) $totalDiasAtrasoP += $diasAtrasoP;
+                }
+            }
+            $promedioP = $totalCuotasP > 0 ? round($totalDiasAtrasoP / $totalCuotasP, 2) : 0;
+            $totalPromediosCreditos += $promedioP;
+            $conteoCreditosConPromedio++;
+        }
+
+        $promedioAtrasoGlobal = $conteoCreditosConPromedio > 0 
+            ? round($totalPromediosCreditos / $conteoCreditosConPromedio, 2) 
+            : 0;
+
+        // Tomar ÚNICAMENTE el crédito activo o el más reciente para evitar duplicidad
+        $prestamoActivo = $todosPrestamos->where('estado', 1)->first() ?? $todosPrestamos->first();
+
         $creditsData = [];
-        foreach ($prestamos as $p) {
-            $paymentPlan = $p->cuotas->map(function($c) {
-                return [
+        if ($prestamoActivo) {
+            $p = $prestamoActivo;
+
+            // 1. Plan de Pago (idéntico al reporte Plan de Pago de la web)
+            $saldoAnterior = (float)$p->monto_financiado;
+            $paymentPlan = [];
+            foreach ($p->cuotas as $c) {
+                $valorCuota = (float)$c->monto_cuota;
+                $nuevoSaldo = max(0, $saldoAnterior - $valorCuota);
+                $capital = (float)($c->monto_cuota - $c->monto_interes);
+                $interes = (float)$c->monto_interes;
+
+                $paymentPlan[] = [
                     'id'            => $c->id,
                     'paymentNumber' => $c->numero_cuota,
-                    'paymentDate'   => $c->fecha_cuota,
-                    'principal'     => (float)($c->capital ?? 0),
-                    'interest'      => (float)($c->interes ?? 0),
-                    'amount'        => (float)$c->monto_cuota,
-                    'balance'       => (float)$c->monto_pendiente_cuota,
-                    'status'        => $c->estado == 3 ? 'PAGADO' : ($c->estado == 2 ? 'PARCIAL' : 'PENDIENTE'),
+                    'paymentDate'   => substr($c->fecha_cuota, 0, 10),
+                    'principal'     => $capital,
+                    'interest'      => $interes,
+                    'amount'        => $valorCuota,
+                    'saldoAnterior' => $saldoAnterior,
+                    'balance'       => $nuevoSaldo,
+                    'mora'          => (float)($c->monto_mora ?? 0),
+                    'status'        => $c->estado == 3 ? 'PAGADA' : ($c->estado == 2 ? 'PARCIAL' : 'PENDIENTE'),
                 ];
-            })->values()->toArray();
+                $saldoAnterior = $nuevoSaldo;
+            }
 
-            $paymentHistory = $p->abonos->map(function($a) {
-                return [
-                    'id'            => $a->id,
-                    'receiptNumber' => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
-                    'paymentDate'   => $a->fecha_abono ?? $a->created_at,
-                    'amount'        => (float)$a->total_abonado,
-                    'status'        => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
+            // 2. Historial de Pagos / Abonos (idéntico a Estado de Cuenta / Abonos de la web)
+            $paymentHistory = [];
+            $hoy = \Carbon\Carbon::now()->format('Y-m-d');
+
+            foreach ($p->abonos as $index => $a) {
+                $montoAbonado = (float)($a->total_abonado ?? ($a->total_efectivo + $a->total_tarjeta + $a->total_cheque + $a->total_transferencia));
+                $fechaAbono = substr($a->fecha_abono ?? $a->created_at, 0, 10);
+
+                $paymentHistory[] = [
+                    'id'                => $a->id,
+                    'receiptNumber'     => 'REC-' . str_pad($a->id, 6, '0', STR_PAD_LEFT),
+                    'paymentDate'       => $fechaAbono,
+                    'amount'            => $montoAbonado,
+                    'receivedBy'        => $a->user_create->full_name ?? ($a->user_create->nombres ?? 'Agente'),
+                    'status'            => $a->estado == 1 ? 'VÁLIDO' : 'ANULADO',
                 ];
-            })->values()->toArray();
+            }
+
+            // 3. Monto en Mora y Días de Atraso del Crédito Actual
+            $cuotasVencidas = $p->cuotas->filter(function($c) use ($hoy) {
+                return $c->estado != 3 && substr($c->fecha_cuota, 0, 10) < $hoy;
+            });
+
+            $montoEnMora = $cuotasVencidas->sum(function($c) {
+                return (float)($c->monto_pendiente_cuota ?? $c->monto_cuota);
+            });
+
+            // Días de atraso actual: días desde la primera cuota vencida pendiente
+            $primeraCuotaVencida = $cuotasVencidas->sortBy('fecha_cuota')->first();
+            $diasAtrasoActual = 0;
+            if ($primeraCuotaVencida) {
+                $diasAtrasoActual = \Carbon\Carbon::parse(substr($primeraCuotaVencida->fecha_cuota, 0, 10))->diffInDays(\Carbon\Carbon::now());
+            }
+
+            // Promedio de días de atraso de este crédito (idéntico a la web)
+            $totalDiasAtrasoCredito = 0;
+            $totalCuotasCredito = $p->cuotas->count();
+            foreach ($p->cuotas as $cuotaAtraso) {
+                $fechaPlanCuota = \Carbon\Carbon::parse($cuotaAtraso->fecha_cuota);
+                if ($cuotaAtraso->estado == 3) {
+                    $ultimoAbono = \App\Models\prestamoCuotaAbonoModel::where('prestamo_cuota_id', $cuotaAtraso->id)
+                        ->where('estado', 1)
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+                    if ($ultimoAbono) {
+                        $fechaPagoReal = \Carbon\Carbon::parse($ultimoAbono->created_at);
+                        $diasAtraso = $fechaPlanCuota->diffInDays($fechaPagoReal, false);
+                        if ($diasAtraso > 0) $totalDiasAtrasoCredito += $diasAtraso;
+                    }
+                } elseif (in_array($cuotaAtraso->estado, [1, 2]) && $fechaPlanCuota->isPast()) {
+                    $diasAtraso = $fechaPlanCuota->diffInDays(\Carbon\Carbon::now(), false);
+                    if ($diasAtraso > 0) $totalDiasAtrasoCredito += $diasAtraso;
+                }
+            }
+            $promedioAtrasoCredito = $totalCuotasCredito > 0 ? round($totalDiasAtrasoCredito / $totalCuotasCredito, 2) : 0;
+
+            // Fechas clave
+            $fechaDesembolso = substr($p->fecha_desembolso ?? $p->fecha_prestamo, 0, 10);
+            $fechaPrimerPago = substr($p->fecha_primer_pago ?? ($p->cuotas->first()->fecha_cuota ?? ''), 0, 10);
+            $ultimaCuota = $p->cuotas->sortByDesc('numero_cuota')->first();
+            $fechaUltimoPago = $ultimaCuota ? substr($ultimaCuota->fecha_cuota, 0, 10) : '';
 
             $sumaCuotas = (float)($p->suma_cuotas ?? $p->cuotas->sum('monto_cuota'));
             $totalPagado = max(0, $sumaCuotas - (float)$p->pendiente_abono);
-            $cuotaMonto = (float)($p->cuotas->first()->monto_cuota ?? 0);
-            
+
             $creditsData[] = [
-                'id'                => $p->id,
-                'creditNumber'      => (string)($p->consecutivo ?? $p->id),
-                'currency'          => $p->moneda_prestamo == 2 ? 'USD' : 'NIO',
-                'paymentFrequency'  => $p->forma_pago_tipo ?? 'Diario',
-                'termMonths'        => (string)($p->plazo ?? '1'),
-                'amount'            => (float)$p->monto,
-                'totalAmount'       => (float)($p->total_prestamo ?? $sumaCuotas),
-                'installmentAmount' => $cuotaMonto,
-                'totalPaid'         => (float)$totalPagado,
-                'remainingBalance'  => (float)$p->pendiente_abono,
-                'overdueAmount'     => 0,
-                'interestRate'      => (float)($p->interes ?? 0),
-                'disbursementDate'  => $p->fecha_desembolso ?? $p->created_at,
-                'firstPaymentDate'  => $p->cuotas->first()->fecha_cuota ?? null,
-                'dueDate'           => $p->fecha_vencimiento ?? null,
-                'status'            => $p->estado == 1 ? 'Active' : ($p->estado == 2 ? 'Paid' : 'Cancelled'),
-                'paymentPlan'       => $paymentPlan,
-                'paymentHistory'    => $paymentHistory,
+                'id'                      => $p->id,
+                'creditNumber'            => (string)($p->consecutivo ?? $p->id),
+                'interestRate'            => (float)$p->tasa_prestamo,
+                'paymentFrequency'        => $p->forma_pago,
+                'termMonths'              => (string)$p->plazo_pago,
+                'amount'                  => (float)$p->monto_prestamo,
+                'totalAmount'             => (float)$p->monto_financiado,
+                'installmentAmount'       => (float)$p->monto_cuota,
+                'disbursementDate'        => $fechaDesembolso,
+                'firstPaymentDate'        => $fechaPrimerPago,
+                'dueDate'                 => $fechaUltimoPago,
+                'totalPaid'               => (float)$totalPagado,
+                'remainingBalance'        => (float)$p->pendiente_abono,
+                'overdueAmount'           => (float)$montoEnMora,
+                'lateDays'                => (int)$diasAtrasoActual,
+                'avgLateDaysCurrentCredit'=> (float)$promedioAtrasoCredito,
+                'avgLateDaysGlobal'       => (float)$promedioAtrasoGlobal,
+                'status'                  => $p->estado == 1 ? 'Activo' : ($p->estado == 2 ? 'Pagado' : 'Cancelado'),
+                'paymentPlan'             => $paymentPlan,
+                'paymentHistory'          => $paymentHistory,
             ];
         }
 
