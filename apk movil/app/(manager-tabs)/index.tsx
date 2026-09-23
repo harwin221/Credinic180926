@@ -104,7 +104,6 @@ export default function ManagerDashboardScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <Text style={styles.logoText}>CREDINIC</Text>
             <View style={styles.managerBadge}>
               <Text style={styles.managerBadgeText}>GERENTE</Text>
             </View>

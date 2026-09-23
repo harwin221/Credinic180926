@@ -123,8 +123,7 @@ export default function ClientDetailModal({
                     <View style={styles.webHeader}>
                         <View style={styles.webHeaderLeft}>
                             <View style={styles.logoBadge}>
-                                <MaterialCommunityIcons name="shield-check" size={20} color="#0ea5e9" />
-                                <Text style={styles.brandName}>CREDINIC</Text>
+                                <MaterialCommunityIcons name="file-document-outline" size={22} color="#0ea5e9" />
                             </View>
                             <View style={styles.titleContainer}>
                                 <Text style={styles.webReportTitle}>ESTADO DE CUENTA</Text>

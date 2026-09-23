@@ -141,7 +141,7 @@ class ThermalPrinterService {
                 return left + ' '.repeat(spaces) + right;
             };
 
-            let receiptText = center('CREDINIC') + '\n';
+            let receiptText = center('CREDINICA') + '\n';
             receiptText += center('ESTADO DE CUENTA / RECIBO') + '\n';
             receiptText += center('COPIA: CLIENTE') + '\n';
             receiptText += '--------------------------------\n';
