@@ -194,7 +194,7 @@ export default function ClientsScreen() {
                         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0ea5e9']} />}
                     >
                         {currentList.length > 0 ? currentList.map((client: any) => (
-                            <TouchableOpacity key={client.id} style={styles.card} onPress={() => handleSelectClient(client)} activeOpacity={0.7}>
+                            <TouchableOpacity key={`client_${client.id}_${client.codigo_cliente || ''}`} style={styles.card} onPress={() => handleSelectClient(client)} activeOpacity={0.7}>
                                 <View style={styles.avatar}>
                                     <MaterialCommunityIcons name="account" size={22} color="#0ea5e9" />
                                 </View>
@@ -295,7 +295,7 @@ export default function ClientsScreen() {
 
                                         {/* Créditos activos */}
                                         {clientDetail.credits.length > 0 ? clientDetail.credits.map((credit: any) => (
-                                            <View key={credit.id} style={styles.creditCard}>
+                                            <View key={`detail_credit_${credit.id}_${credit.creditNumber || ''}`} style={styles.creditCard}>
                                                 <Text style={styles.creditTitle}>Crédito #{credit.creditNumber}</Text>
                                                 
                                                 {/* Configuración del Préstamo */}
@@ -457,7 +457,7 @@ export default function ClientsScreen() {
                                             <Text style={styles.sectionTitle}>Historial de Pagos</Text>
                                         </View>
                                         {clientDetail.credits[0].paymentHistory?.length > 0 ? clientDetail.credits[0].paymentHistory.map((payment: any) => (
-                                            <View key={payment.id} style={styles.paymentCard}>
+                                            <View key={`payment_${payment.id}_${payment.receiptNumber || ''}`} style={styles.paymentCard}>
                                                 <View style={styles.paymentHeader}>
                                                     <Text style={styles.paymentAmount}>C$ {fmt(payment.amount)}</Text>
                                                     <Text style={[styles.paymentStatus, payment.status === 'ANULADO' ? styles.statusAnulado : styles.statusValido]}>
