@@ -58,7 +58,7 @@ export default function LoginScreen() {
                         'Por seguridad, debes cambiar tu contraseña antes de continuar. Ve a tu perfil después de iniciar sesión.',
                         () => {
                             // Redirigir según el rol
-                            const roleUpper = data.user.role.toUpperCase();
+                            const roleUpper = (data.user.role || 'AGENTE').toUpperCase();
                             const isManager = roleUpper === 'GERENTE' || roleUpper === 'ADMINISTRADOR' || roleUpper === 'FINANZAS';
                             
                             if (isManager) {
@@ -72,7 +72,7 @@ export default function LoginScreen() {
                 }
 
                 // Redirigir según el rol (comparar en mayúsculas como la app web)
-                const roleUpper = data.user.role.toUpperCase();
+                const roleUpper = (data.user.role || 'AGENTE').toUpperCase();
                 const isManager = roleUpper === 'GERENTE' || roleUpper === 'ADMINISTRADOR' || roleUpper === 'FINANZAS';
                 
                 console.log('[LOGIN] Redirigiendo...', { role: roleUpper, isManager });

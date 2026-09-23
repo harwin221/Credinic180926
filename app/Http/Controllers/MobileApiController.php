@@ -50,6 +50,7 @@ class MobileApiController extends Controller
             $token = base64_encode($user->id . '|' . now()->timestamp . '|' . md5($user->password));
         }
 
+        $roleName = $user->tipo_usuario == 2 ? 'GERENTE' : 'AGENTE';
         return response()->json([
             'success'  => true,
             'token'    => $token,
@@ -57,6 +58,7 @@ class MobileApiController extends Controller
                 'id'       => $user->id,
                 'name'     => $user->full_name,
                 'username' => $user->username,
+                'role'     => $roleName,
             ],
             'message'  => 'Login exitoso',
         ]);
@@ -1120,7 +1122,7 @@ class MobileApiController extends Controller
             // CRÍTICO: 'desembolso' no debe ser null para evitar error en decode($request->desembolso)
             'desembolso'          => encode($agente->id), 
             'fechaDesembolso'     => \Carbon\Carbon::now()->toDateString(),
-            'moneda'              => 'C$',
+            'moneda'              => 1,
             'montoFinanciar'      => $amount,
             'chkSolicitud'        => true, // Marcador crítico para indicar que es una solicitud
             'montoTotalFinanciar' => $montoTotalFinanciar,
