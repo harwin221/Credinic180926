@@ -17,7 +17,7 @@ function RootLayoutContent() {
       } else if (user && inAuthGroup) {
         // El usuario está logueado pero está en el Login, redirigir según su rol
         const roleUpper = user.role.toUpperCase();
-        const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS'].includes(roleUpper);
+        const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
         
         console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
         

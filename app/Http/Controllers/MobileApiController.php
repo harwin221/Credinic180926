@@ -1136,7 +1136,7 @@ class MobileApiController extends Controller
             'totalIntereses'      => $totalIntereses,
             'comentarios'         => $request->comentarios ?? 'Solicitud creada desde el APK móvil',
             'dias_mora'           => 1,
-            'moraTipo'            => 'Fijo',
+            'moraTipo'            => 1,
             'monto_mora'          => 0.00,
             'tipo_prestamo'       => $request->tipoPrestamo ?? '1', // 1: Nuevo, 2: Represtamo, etc.
             'tipo_destino'        => $request->tipoDestino ?? '2',  // 1: Comercio, 2: Consumo, etc.
@@ -1168,6 +1168,65 @@ class MobileApiController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Ocurrió un error inesperado al guardar la solicitud: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // ─── POST /api/mobile/crear-cliente ─────────────────────────────────────────
+    public function crearCliente(Request $request)
+    {
+        $agente = $request->user();
+
+        $request->validate([
+            'nombres'   => 'required|string',
+            'apellidos' => 'required|string',
+            'cedula'    => 'required|string|unique:users,cedula',
+            'telefono1' => 'numeric|nullable',
+            'telefono2' => 'numeric|nullable',
+            'direccion' => 'string|nullable',
+        ], [
+            'cedula.unique' => 'La cédula ya se encuentra ingresada',
+        ]);
+
+        try {
+            $user = new User();
+            $user->nombres = $request->nombres;
+            $user->apellidos = $request->apellidos;
+            $user->cedula = $request->cedula;
+            $user->telefono1 = $request->telefono1;
+            $user->telefono2 = $request->telefono2;
+            $user->direccion = $request->direccion;
+            $user->tipo_usuario = 3; // Cliente
+            $user->password = \Hash::make('test2023');
+            $user->email = \Str::random('10') . "@gmail.com";
+            $user->created_user_id = $agente->id;
+            
+            // Asignar el departamento/municipio de la sucursal o del agente
+            $user->dep_mun = $agente->dep_mun;
+            $user->sucursal_id = $agente->sucursal_id;
+            $user->estado = 1;
+
+            if ($user->save()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Cliente creado exitosamente',
+                    'data'    => [
+                        'id'        => $user->id,
+                        'full_name' => $user->full_name,
+                        'cedula'    => $user->cedula,
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo guardar el cliente en la base de datos'
+            ], 400);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear cliente: ' . $e->getMessage()
             ], 500);
         }
     }

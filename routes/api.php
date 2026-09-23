@@ -33,6 +33,7 @@ Route::prefix('mobile')->group(function () {
         Route::get('/cliente-detalle',    [MobileApiController::class, 'clienteDetalle']);
         Route::get('/mobile_client_detail', [MobileApiController::class, 'clienteDetalle']);
         Route::post('/mobile_create_credit', [MobileApiController::class, 'crearSolicitud']);
+        Route::post('/mobile_create_client', [MobileApiController::class, 'crearCliente']);
     });
 });
 

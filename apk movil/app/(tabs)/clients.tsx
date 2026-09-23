@@ -6,6 +6,7 @@ import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
 import CreditFormModal from '../../components/CreditFormModal';
+import ClientFormModal from '../../components/ClientFormModal';
 import CustomAlert from '../../components/CustomAlert';
 import { AlertHelper } from '../../utils/custom-alert-helper';
 
@@ -40,6 +41,7 @@ export default function ClientsScreen() {
     const [loadingDetail, setLoadingDetail] = useState(false);
     const [activeDetailTab, setActiveDetailTab] = useState<'detalles' | 'plan' | 'historial'>('detalles');
     const [showCreditForm, setShowCreditForm] = useState(false);
+    const [showClientForm, setShowClientForm] = useState(false);
     const [creditFormClient, setCreditFormClient] = useState<any>(null);
     const [alert, setAlert] = useState<{
         visible: boolean;
@@ -160,21 +162,30 @@ export default function ClientsScreen() {
         <>
             <SafeAreaView style={styles.container}>
                 <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
-                {/* Search */}
-                <View style={styles.searchWrapper}>
-                    <MaterialCommunityIcons name="magnify" size={20} color="#94a3b8" style={styles.searchIcon} />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Buscar por nombre, cédula o código..."
-                        placeholderTextColor="#94a3b8"
-                        value={search}
-                        onChangeText={handleSearch}
-                    />
-                    {search.length > 0 && (
-                        <TouchableOpacity onPress={() => handleSearch('')}>
-                            <MaterialCommunityIcons name="close" size={18} color="#94a3b8" />
-                        </TouchableOpacity>
-                    )}
+                {/* Search Header Row with Add Client Button */}
+                <View style={styles.headerRow}>
+                    <View style={styles.searchWrapper}>
+                        <MaterialCommunityIcons name="magnify" size={20} color="#94a3b8" style={styles.searchIcon} />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Buscar por nombre, cédula o código..."
+                            placeholderTextColor="#94a3b8"
+                            value={search}
+                            onChangeText={handleSearch}
+                        />
+                        {search.length > 0 && (
+                            <TouchableOpacity onPress={() => handleSearch('')}>
+                                <MaterialCommunityIcons name="close" size={18} color="#94a3b8" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    <TouchableOpacity 
+                        style={styles.addClientButton}
+                        onPress={() => setShowClientForm(true)}
+                        activeOpacity={0.8}
+                    >
+                        <MaterialCommunityIcons name="account-plus" size={22} color="#fff" />
+                    </TouchableOpacity>
                 </View>
 
                 {/* Tabs */}
@@ -474,6 +485,17 @@ export default function ClientsScreen() {
                 </View>
             </View>
         </Modal>
+
+        {/* Modal de formulario de cliente nuevo */}
+        <ClientFormModal
+            visible={showClientForm}
+            onClose={() => setShowClientForm(false)}
+            onSuccess={(newClient) => {
+                fetchClients(search);
+                // Iniciar flujo de crédito inmediatamente para el cliente recién creado
+                handleCreateCredit(newClient);
+            }}
+        />
 
         {/* Modal de formulario de crédito */}
         <CreditFormModal
