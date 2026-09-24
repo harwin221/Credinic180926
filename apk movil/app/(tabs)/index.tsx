@@ -34,9 +34,18 @@ export default function RecoveredScreen() {
           fetchDashboardMetrics(activeUser.id, activeUser.role);
         }
       };
+
+      // Cargar inmediatamente al enfocar la pestaña
       load();
+
+      // Auto-actualización periódica en vivo cada 20 segundos sin necesidad de salir de la app
+      const timer = setInterval(() => {
+        if (isMounted) load();
+      }, 20000);
+
       return () => {
         isMounted = false;
+        clearInterval(timer);
       };
     }, [user])
   );

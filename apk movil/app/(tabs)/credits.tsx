@@ -919,7 +919,7 @@ const styles = StyleSheet.create({
     tabText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
 
     // Lista
-    listContainer: { padding: 14, paddingBottom: 40 },
+    listContainer: { padding: 14, paddingBottom: Platform.OS === "android" ? 110 : 80 },
     emptyContainer: { alignItems: 'center', marginTop: 60, gap: 12 },
     emptyText: { textAlign: 'center', color: '#94a3b8', fontSize: 14, marginTop: 8 },
 

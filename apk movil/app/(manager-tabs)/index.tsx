@@ -1,3 +1,4 @@
+import { sessionService } from '../../services/session';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, RefreshControl, StatusBar, Platform, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback } from 'react';
@@ -27,18 +28,35 @@ export default function ManagerDashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-        if (user) {
-            fetchDashboardMetrics(user.id);
-        }
+        let isMounted = true;
+        const load = async () => {
+            const session = await sessionService.getSession();
+            const activeUser = user || session;
+            if (activeUser?.id && isMounted) {
+                fetchDashboardMetrics(activeUser.id, activeUser.role);
+            }
+        };
+
+        load();
+
+        const timer = setInterval(() => {
+            if (isMounted) load();
+        }, 20000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(timer);
+        };
     }, [user])
   );
 
-  const fetchDashboardMetrics = async (userId?: string) => {
-    const id = userId || user?.id;
-    if (!id || !user?.role) return;
-
+  const fetchDashboardMetrics = async (userId?: string, userRole?: string) => {
+    const session = await sessionService.getSession();
+    const id = userId || user?.id || session?.id;
+    const role = userRole || user?.role || session?.role || '2';
+    if (!id) return;
     try {
-      const url = `${API_ENDPOINTS.mobile_dashboard}?userId=${id}&role=${user.role}`;
+      const url = `${API_ENDPOINTS.mobile_dashboard}?userId=${id}&role=${role}`;
       console.log('[DASHBOARD MANAGER] Fetching:', url);
       
       const resp = await apiFetch(url);

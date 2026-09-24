@@ -1,24 +1,19 @@
-import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, StatusBar, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
-import PaymentModal from '../../components/PaymentModal';
-import ReceiptModal, { ReceiptData } from '../../components/ReceiptModal';
-import ClientDetailModal from '../../components/ClientDetailModal';
 import { sessionService } from '../../services/session';
-import { thermalPrinterService } from '../../services/thermal-printer';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertHelper } from '../../utils/custom-alert-helper';
+import ClientDetailModal from '../../components/ClientDetailModal';
+import ReceiptModal, { ReceiptData } from '../../components/ReceiptModal';
 
 export default function SearchScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [selectedCredit, setSelectedCredit] = useState<any>(null);
-    const [searchTab, setSearchTab] = useState<'consult' | 'pay'>('pay');
     const [isDetailVisible, setIsDetailVisible] = useState(false);
-    const [isPaymentVisible, setIsPaymentVisible] = useState(false);
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
     const [isReceiptVisible, setIsReceiptVisible] = useState(false);
 
@@ -30,33 +25,22 @@ export default function SearchScreen() {
 
         setIsSearching(true);
         try {
-            const resp = await apiFetch(`${API_ENDPOINTS.mobile_search}?q=${encodeURIComponent(searchQuery)}`);
+            const resp = await apiFetch(`${API_ENDPOINTS.mobile_search}?query=${encodeURIComponent(searchQuery)}`);
             const result = await resp.json();
-            
+
             if (result.success) {
                 setSearchResults(result.data || []);
             } else {
-                console.error('[SEARCH] Error:', result.message);
+                setSearchResults([]);
+                AlertHelper.alert('Aviso', result.message || 'No se encontraron clientes');
             }
         } catch (error) {
-            console.error('Error searching:', error);
+            console.error('Search error:', error);
+            AlertHelper.alert('Error', 'No se pudo conectar con el servidor');
         } finally {
             setIsSearching(false);
         }
     }, [searchQuery]);
-
-    // Búsqueda inteligente (Debounce de 500ms)
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (searchQuery.trim().length >= 2) {
-                handleSearch();
-            } else if (searchQuery.length === 0) {
-                setSearchResults([]);
-            }
-        }, 500);
-
-        return () => clearTimeout(timer);
-    }, [searchQuery, handleSearch]);
 
     const handleSelectCredit = async (item: any) => {
         try {
@@ -65,11 +49,7 @@ export default function SearchScreen() {
             
             if (result.success) {
                 setSelectedCredit(result.data);
-                if (searchTab === 'consult') {
-                    setIsDetailVisible(true);
-                } else {
-                    setIsPaymentVisible(true);
-                }
+                setIsDetailVisible(true);
             } else {
                 AlertHelper.alert('Error', 'No se pudo cargar el detalle del crédito');
             }
@@ -79,108 +59,60 @@ export default function SearchScreen() {
         }
     };
 
-    const handleProcessPayment = async (paymentData: any) => {
-        const session = await sessionService.getSession();
-        if (!session) return;
-
-        try {
-            const response = await apiFetch(API_ENDPOINTS.mobile_payments, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prestamo_id: selectedCredit.id,
-                    monto:       paymentData.amount,
-                    fecha_abono: new Date().toISOString().split('T')[0],
-                    local_id:    null,
-                })
-            });
-
-            const result = await response.json();
-            
-            if (result.success) {
-                setIsPaymentVisible(false);
-                setIsDetailVisible(false);
-                
-                const detail = selectedCredit.details || {};
-                const now = new Date().toLocaleDateString('es-NI', { 
-                    day: '2-digit', 
-                    month: '2-digit', 
-                    year: 'numeric', 
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    second: '2-digit', 
-                    hour12: true 
-                });
-                
-                setReceiptData({
-                    transactionNumber: result.transactionNumber || result.paymentId || 'N/A',
-                    creditNumber: selectedCredit.creditNumber || selectedCredit.id,
-                    clientName: selectedCredit.clientName,
-                    clientCode: selectedCredit.clientCode || 'N/A',
-                    paymentDate: now,
-                    cuotaDelDia: detail.dueTodayAmount || 0,
-                    montoAtrasado: detail.overdueAmount || 0,
-                    diasMora: detail.lateDays || 0,
-                    totalAPagar: (detail.dueTodayAmount || 0) + (detail.overdueAmount || 0),
-                    montoCancelacion: detail.remainingBalance || 0,
-                    amountPaid: paymentData.amount,
-                    saldoAnterior: detail.remainingBalance || 0,
-                    nuevoSaldo: Math.max(0, (detail.remainingBalance || 0) - paymentData.amount),
-                    managedBy: session.fullName,
-                    sucursal: session.sucursalName || 'SUCURSAL',
-                    role: session.role,
-                });
-                setIsReceiptVisible(true);
-                
-                // Limpiar búsqueda
-                setSearchQuery('');
-                setSearchResults([]);
-            } else {
-                AlertHelper.alert('Error', result.message || 'No se pudo registrar el pago');
-            }
-        } catch (error) {
-            console.error('Payment error:', error);
-            AlertHelper.alert('Error de conexión', 'No se pudo conectar con el servidor');
-        }
-    };
-
+    // ─── Reimprimir Recibo (lógica idéntica al botón reimprimir de la web) ──────
     const handleReprintReceipt = async (payment: any, credit: any) => {
         const session = await sessionService.getSession();
         if (!session) return;
 
         try {
             console.log('[REPRINT] Intentando reimprimir:', { 
-                creditId: credit.id, 
-                paymentId: payment.id,
-                transactionNumber: payment.transactionNumber || payment.receiptNumber
+                creditId: credit?.id, 
+                paymentId: payment?.id,
+                transactionNumber: payment?.transactionNumber || payment?.receiptNumber
             });
 
-            // Usar el endpoint de recibo que calcula todo correctamente
-            const response = await apiFetch(API_ENDPOINTS.mobile_receipt, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    creditId: credit.id,
-                    paymentId: payment.id,
-                    format: 'json',
-                    userId: session.id // Enviar userId para autenticación móvil
-                })
-            });
+            const abonoId = payment?.id;
+            let result: any = null;
 
-            const result = await response.json();
-            
-            console.log('[REPRINT] Respuesta del servidor:', result);
-            
-            if (result.success && result.data) {
+            // 1. Intentar GET /api/mobile/recibo/{id}
+            if (abonoId) {
+                try {
+                    const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/recibo/${abonoId}`);
+                    const json = await resp.json();
+                    if (json.success && json.data) {
+                        result = json;
+                    }
+                } catch (e) {
+                    console.warn('[REPRINT] Falló GET /recibo/{id}, probando POST:', e);
+                }
+            }
+
+            // 2. Si no, intentar POST /api/mobile/recibo con abono_id / prestamo_id
+            if (!result || !result.success) {
+                const response = await apiFetch(API_ENDPOINTS.mobile_recibo || `${API_ENDPOINTS.base}/api/mobile/recibo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        abono_id: abonoId,
+                        paymentId: abonoId,
+                        prestamo_id: credit?.id,
+                        creditId: credit?.id,
+                        userId: session.id,
+                    })
+                });
+                result = await response.json();
+            }
+
+            if (result && result.success && result.data) {
                 setReceiptData(result.data);
                 setIsReceiptVisible(true);
             } else {
-                console.error('[REPRINT] Error en respuesta:', result);
-                AlertHelper.alert('Error', result.error || 'No se pudo generar el recibo');
+                console.error('[REPRINT] Error en respuesta del servidor:', result);
+                AlertHelper.alert('Error', result?.message || result?.error || 'No se pudo generar el recibo');
             }
         } catch (error) {
             console.error('[REPRINT] Error al reimprimir:', error);
-            AlertHelper.alert('Error', 'No se pudo conectar con el servidor');
+            AlertHelper.alert('Error', 'No se pudo conectar con el servidor para reimprimir');
         }
     };
 
@@ -189,27 +121,8 @@ export default function SearchScreen() {
             <StatusBar barStyle="dark-content" backgroundColor="#ffffff" translucent={false} />
             
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Gestión de Clientes</Text>
-                <Text style={styles.headerSubtitle}>
-                    {searchTab === 'pay' ? 'Módulo de Recuperación y Cobros' : 'Módulo de Consultas y Reportes'}
-                </Text>
-
-                <View style={styles.tabContainer}>
-                    <TouchableOpacity 
-                        style={[styles.tabButton, searchTab === 'pay' && styles.tabButtonActive]} 
-                        onPress={() => setSearchTab('pay')}
-                    >
-                        <MaterialCommunityIcons name="cash-register" size={20} color={searchTab === 'pay' ? '#fff' : '#64748b'} />
-                        <Text style={[styles.tabButtonText, searchTab === 'pay' && styles.tabButtonTextActive]}>RECUPERACION</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={[styles.tabButton, searchTab === 'consult' && styles.tabButtonActive]} 
-                        onPress={() => setSearchTab('consult')}
-                    >
-                        <MaterialCommunityIcons name="file-chart" size={20} color={searchTab === 'consult' ? '#fff' : '#64748b'} />
-                        <Text style={[styles.tabButtonText, searchTab === 'consult' && styles.tabButtonTextActive]}>CONSULTA</Text>
-                    </TouchableOpacity>
-                </View>
+                <Text style={styles.headerTitle}>Consulta de Clientes</Text>
+                <Text style={styles.headerSubtitle}>Módulo de Consultas y Estados de Cuenta</Text>
             </View>
 
             <View style={styles.searchContainer}>
@@ -233,7 +146,7 @@ export default function SearchScreen() {
                 <TouchableOpacity 
                     style={styles.searchButton}
                     onPress={handleSearch}
-                    disabled={isSearching || searchQuery.length < 2}
+                    disabled={isSearching}
                 >
                     {isSearching ? (
                         <ActivityIndicator color="#ffffff" size="small" />
@@ -243,28 +156,39 @@ export default function SearchScreen() {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
                 {isSearching ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color="#0ea5e9" />
-                        <Text style={styles.loadingText}>Buscando...</Text>
+                        <Text style={styles.loadingText}>Buscando en la base de datos...</Text>
                     </View>
                 ) : searchResults.length > 0 ? (
                     searchResults.map((item) => (
                         <TouchableOpacity 
-                            key={item.id} 
+                            key={`search_result_${item.id}`} 
                             style={styles.resultCard}
                             onPress={() => handleSelectCredit(item)}
+                            activeOpacity={0.7}
                         >
                             <View style={styles.resultHeader}>
-                                <MaterialCommunityIcons name="account-circle" size={48} color="#0ea5e9" />
+                                <MaterialCommunityIcons 
+                                    name="account" 
+                                    size={40} 
+                                    color="#0ea5e9" 
+                                />
                                 <View style={styles.resultInfo}>
                                     <Text style={styles.clientName}>{item.clientName}</Text>
-                                    <Text style={styles.creditNumber}>#{item.creditNumber}</Text>
-                                    <Text style={styles.gestorName}>Gestor: {item.collectionsManager}</Text>
+                                    <Text style={styles.creditNumber}>Crédito: {item.creditNumber}</Text>
+                                    {item.gestor && (
+                                        <Text style={styles.gestorName}>Gestor: {item.gestor}</Text>
+                                    )}
                                 </View>
                             </View>
-                            
+
                             <View style={styles.resultDetails}>
                                 <View style={styles.detailRow}>
                                     <Text style={styles.detailLabel}>Saldo Pendiente:</Text>
@@ -274,7 +198,7 @@ export default function SearchScreen() {
                                     <Text style={styles.detailLabel}>Cuota del Día:</Text>
                                     <Text style={styles.detailValue}>C$ {Number(item.dueTodayAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                 </View>
-                                {item.overdueAmount > 0 && (
+                                {Number(item.overdueAmount || 0) > 0 && (
                                     <View style={styles.detailRow}>
                                         <Text style={styles.detailLabel}>En Mora:</Text>
                                         <Text style={styles.detailValueOrange}>C$ {Number(item.overdueAmount || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
@@ -284,12 +208,12 @@ export default function SearchScreen() {
 
                             <View style={styles.actionButton}>
                                 <MaterialCommunityIcons 
-                                    name={searchTab === 'pay' ? "cash-plus" : "file-chart-outline"} 
+                                    name="file-chart-outline" 
                                     size={20} 
-                                    color={searchTab === 'pay' ? "#10b981" : "#0ea5e9"} 
+                                    color="#0ea5e9" 
                                 />
-                                <Text style={[styles.actionButtonText, searchTab === 'consult' && { color: '#0ea5e9' }]}>
-                                    {searchTab === 'pay' ? 'Aplicar Pago' : 'Ver Reporte / Estado Cuenta'}
+                                <Text style={styles.actionButtonText}>
+                                    Ver Reporte / Estado de Cuenta
                                 </Text>
                             </View>
                         </TouchableOpacity>
@@ -303,14 +227,14 @@ export default function SearchScreen() {
                 ) : (
                     <View style={styles.emptyContainer}>
                         <MaterialCommunityIcons 
-                            name={searchTab === 'pay' ? "magnify" : "file-search-outline"} 
+                            name="file-search-outline" 
                             size={64} 
                             color="#cbd5e1" 
                         />
                         <Text style={styles.emptyText}>
-                            {searchTab === 'pay' ? 'Busca un cliente para cobrar' : 'Consulta estados de cuenta'}
+                            Consulta estados de cuenta
                         </Text>
-                        <Text style={styles.emptySubtext}>Ingresa nombre, cédula o código</Text>
+                        <Text style={styles.emptySubtext}>Ingresa nombre, cédula o código del cliente</Text>
                     </View>
                 )}
             </ScrollView>
@@ -319,18 +243,7 @@ export default function SearchScreen() {
                 visible={isDetailVisible}
                 onClose={() => setIsDetailVisible(false)}
                 credit={selectedCredit}
-                onApplyPayment={() => {
-                    setIsDetailVisible(false);
-                    setIsPaymentVisible(true);
-                }}
                 onReprintReceipt={handleReprintReceipt}
-            />
-
-            <PaymentModal
-                visible={isPaymentVisible}
-                onClose={() => setIsPaymentVisible(false)}
-                credit={selectedCredit}
-                onPay={handleProcessPayment}
             />
 
             <ReceiptModal
@@ -363,39 +276,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#64748b',
         marginTop: 4,
-    },
-    tabContainer: {
-        flexDirection: 'row',
-        backgroundColor: '#f1f5f9',
-        padding: 5,
-        borderRadius: 12,
-        marginTop: 15,
-        gap: 5,
-    },
-    tabButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 10,
-        borderRadius: 8,
-        gap: 8,
-    },
-    tabButtonActive: {
-        backgroundColor: '#0ea5e9',
-        shadowColor: '#0ea5e9',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    tabButtonText: {
-        fontSize: 11,
-        fontWeight: '800',
-        color: '#64748b',
-    },
-    tabButtonTextActive: {
-        color: '#fff',
     },
     searchContainer: {
         flexDirection: 'row',
@@ -436,6 +316,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 15,
+        paddingBottom: 90,
     },
     loadingContainer: {
         paddingVertical: 60,
@@ -517,55 +398,17 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f0fdf4',
+        backgroundColor: '#f0f9ff',
         paddingVertical: 12,
         borderRadius: 12,
         gap: 8,
         borderWidth: 1,
-        borderColor: '#bbf7d0',
+        borderColor: '#bae6fd',
     },
     actionButtonText: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#10b981',
-    },
-    actionButtonConsultText: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#0ea5e9',
-    },
-    actionButtonsRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginTop: 5,
-    },
-    miniButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        borderRadius: 12,
-        gap: 6,
-        borderWidth: 1,
-    },
-    miniButtonBlue: {
-        backgroundColor: '#f0f9ff',
-        borderColor: '#bae6fd',
-    },
-    miniButtonGreen: {
-        backgroundColor: '#f0fdf4',
-        borderColor: '#bbf7d0',
-    },
-    miniButtonTextBlue: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#0ea5e9',
-    },
-    miniButtonTextGreen: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#10b981',
+        color: '#0284c7',
     },
     emptyContainer: {
         paddingVertical: 60,
@@ -583,4 +426,3 @@ const styles = StyleSheet.create({
         marginTop: 8,
     },
 });
-

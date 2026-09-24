@@ -1,3 +1,4 @@
+import ReceiptModal, { ReceiptData } from '../../components/ReceiptModal';
 import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, Modal, StatusBar, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback, Fragment } from 'react';
@@ -43,6 +44,8 @@ export default function ClientsScreen() {
     const [showCreditForm, setShowCreditForm] = useState(false);
     const [showClientForm, setShowClientForm] = useState(false);
     const [creditFormClient, setCreditFormClient] = useState<any>(null);
+    const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+    const [isReceiptVisible, setIsReceiptVisible] = useState(false);
     const [alert, setAlert] = useState<{
         visible: boolean;
         type: 'success' | 'error' | 'warning' | 'info';
@@ -54,6 +57,52 @@ export default function ClientsScreen() {
         title: '',
         message: '',
     });
+
+        const handleReprintPayment = async (payment: any, credit: any) => {
+        const session = await sessionService.getSession();
+        if (!session) return;
+        try {
+            const abonoId = payment?.id;
+            let result: any = null;
+
+            if (abonoId) {
+                try {
+                    const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/recibo/${abonoId}`);
+                    const json = await resp.json();
+                    if (json.success && json.data) {
+                        result = json;
+                    }
+                } catch (e) {
+                    console.warn('[REPRINT] Falló GET /recibo/{id}, probando POST:', e);
+                }
+            }
+
+            if (!result || !result.success) {
+                const response = await apiFetch(API_ENDPOINTS.mobile_recibo || `${API_ENDPOINTS.base}/api/mobile/recibo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        abono_id: abonoId,
+                        paymentId: abonoId,
+                        prestamo_id: credit?.id,
+                        creditId: credit?.id,
+                        userId: session.id,
+                    })
+                });
+                result = await response.json();
+            }
+
+            if (result && result.success && result.data) {
+                setReceiptData(result.data);
+                setIsReceiptVisible(true);
+            } else {
+                AlertHelper.alert('Error', result?.message || result?.error || 'No se pudo generar el recibo');
+            }
+        } catch (error) {
+            console.error('[REPRINT] Error:', error);
+            AlertHelper.alert('Error', 'No se pudo conectar con el servidor para reimprimir');
+        }
+    };
 
     const fetchClients = useCallback(async (searchTerm = '') => {
         const session = await sessionService.getSession();
@@ -474,6 +523,14 @@ export default function ClientsScreen() {
                                                     <Text style={styles.creditLabel}>Recibido por:</Text>
                                                     <Text style={styles.creditValue}>{payment.receivedBy || 'Agente'}</Text>
                                                 </View>
+                                                <TouchableOpacity 
+                                                    style={styles.reprintBtnHistory}
+                                                    onPress={() => handleReprintPayment(payment, clientDetail.credits[0])}
+                                                    activeOpacity={0.8}
+                                                >
+                                                    <MaterialCommunityIcons name="printer" size={16} color="#0ea5e9" />
+                                                    <Text style={styles.reprintBtnHistoryText}>Reimprimir Recibo</Text>
+                                                </TouchableOpacity>
                                             </View>
                                         )) : (
                                             <View style={styles.emptyContainer}>
@@ -574,7 +631,7 @@ const styles = StyleSheet.create({
     tabText: { fontSize: 13, color: '#64748b', fontWeight: '600' },
     activeTabText: { color: '#0ea5e9', fontWeight: 'bold' },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContainer: { padding: 15, paddingBottom: 40 },
+    listContainer: { padding: 15, paddingBottom: Platform.OS === 'android' ? 110 : 80 },
     card: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f8fafc' },
     avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f0f9ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     cardInfo: { flex: 1 },
@@ -607,7 +664,7 @@ const styles = StyleSheet.create({
     },
     emptyText: { textAlign: 'center', color: '#94a3b8', marginTop: 40, fontSize: 14 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '85%' },
+    modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'android' ? 34 : 20, maxHeight: '88%' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
     modalTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b', flex: 1, marginRight: 10 },
     detailTabsWrapper: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', marginBottom: 12 },
@@ -651,5 +708,23 @@ const styles = StyleSheet.create({
     paymentStatus: { fontSize: 11, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
     statusValido: { backgroundColor: '#d1fae5', color: '#065f46' },
     statusAnulado: { backgroundColor: '#fee2e2', color: '#991b1b' },
+    reprintBtnHistory: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f0f9ff',
+        borderWidth: 1,
+        borderColor: '#bae6fd',
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        marginTop: 8,
+        gap: 6,
+    },
+    reprintBtnHistoryText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#0284c7',
+    },
 });
 

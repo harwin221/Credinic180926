@@ -1011,7 +1011,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#fef2f2',
         borderLeftWidth: 4,
         borderLeftColor: '#dc2626',
-        padding: 12,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: Platform.OS === "android" ? 34 : 20,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
@@ -1060,7 +1062,9 @@ const styles = StyleSheet.create({
         marginBottom: 8
     },
     statsCard: { 
-        padding: 12, 
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: Platform.OS === "android" ? 34 : 20, 
         borderRadius: 8, 
         backgroundColor: '#f8fafc', 
         borderWidth: 1, 
@@ -1114,15 +1118,17 @@ const styles = StyleSheet.create({
 
     // Barra de acción inferior
     modalFooterBar: {
-        padding: 12,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: Platform.OS === "android" ? 34 : 20,
         borderTopWidth: 1,
         borderTopColor: '#e2e8f0',
         backgroundColor: '#ffffff'
     },
     applyPaymentBtn: {
         backgroundColor: '#10b981',
-        height: 46,
-        borderRadius: 10,
+        height: 50,
+        borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
