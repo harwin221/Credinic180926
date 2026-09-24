@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, StatusBar, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
 import { sessionService } from '../../services/session';
@@ -17,29 +18,40 @@ export default function SearchScreen() {
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
     const [isReceiptVisible, setIsReceiptVisible] = useState(false);
 
-    const handleSearch = useCallback(async () => {
-        if (searchQuery.trim().length < 2) {
+    const handleSearch = useCallback(async (term?: string) => {
+        const q = (term ?? searchQuery).trim();
+        if (q.length < 2) {
             setSearchResults([]);
             return;
         }
 
         setIsSearching(true);
         try {
-            const resp = await apiFetch(`${API_ENDPOINTS.mobile_search}?query=${encodeURIComponent(searchQuery)}`);
+            const resp = await apiFetch(`${API_ENDPOINTS.mobile_search}?q=${encodeURIComponent(q)}`);
             const result = await resp.json();
 
             if (result.success) {
                 setSearchResults(result.data || []);
             } else {
                 setSearchResults([]);
-                AlertHelper.alert('Aviso', result.message || 'No se encontraron clientes');
             }
         } catch (error) {
             console.error('Search error:', error);
-            AlertHelper.alert('Error', 'No se pudo conectar con el servidor');
         } finally {
             setIsSearching(false);
         }
+    }, [searchQuery]);
+
+    // Búsqueda automática al escribir con debounce de 400ms
+    React.useEffect(() => {
+        if (searchQuery.trim().length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(() => {
+            handleSearch(searchQuery.trim());
+        }, 400);
+        return () => clearTimeout(timer);
     }, [searchQuery]);
 
     const handleSelectCredit = async (item: any) => {
@@ -104,8 +116,12 @@ export default function SearchScreen() {
             }
 
             if (result && result.success && result.data) {
-                setReceiptData(result.data);
-                setIsReceiptVisible(true);
+                // Cerrar el detalle primero para que el recibo sea visible
+                setIsDetailVisible(false);
+                setTimeout(() => {
+                    setReceiptData({ ...result.data, is_reimpresion: true });
+                    setIsReceiptVisible(true);
+                }, 300);
             } else {
                 console.error('[REPRINT] Error en respuesta del servidor:', result);
                 AlertHelper.alert('Error', result?.message || result?.error || 'No se pudo generar el recibo');

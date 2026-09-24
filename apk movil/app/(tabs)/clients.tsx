@@ -93,8 +93,13 @@ export default function ClientsScreen() {
             }
 
             if (result && result.success && result.data) {
-                setReceiptData(result.data);
-                setIsReceiptVisible(true);
+                // Cerrar el modal del cliente primero para que el recibo sea visible
+                setSelectedClient(null);
+                setClientDetail(null);
+                setTimeout(() => {
+                    setReceiptData({ ...result.data, is_reimpresion: true });
+                    setIsReceiptVisible(true);
+                }, 300);
             } else {
                 AlertHelper.alert('Error', result?.message || result?.error || 'No se pudo generar el recibo');
             }
@@ -577,6 +582,12 @@ export default function ClientsScreen() {
             title={alert.title}
             message={alert.message}
             onClose={() => setAlert({ ...alert, visible: false })}
+        />
+
+        <ReceiptModal
+            visible={isReceiptVisible}
+            onClose={() => setIsReceiptVisible(false)}
+            receipt={receiptData}
         />
         </>
     );

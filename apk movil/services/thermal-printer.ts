@@ -2,18 +2,16 @@ import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
 import { ReceiptData } from '../components/ReceiptModal';
 
 // Función para limpiar texto y convertirlo a ASCII puro
-// Esto evita que caracteres UTF-8 de 2 bytes (como ¡, á, é, í, ó, ú, ñ)
-// sean interpretados como ideogramas chinos (GB2312) por impresoras térmicas Bluetooth
 function cleanAscii(str: string): string {
     if (!str) return '';
     return str
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Quita acentos (á->a, é->e, etc.)
+        .replace(/[\u0300-\u036f]/g, '')
         .replace(/¡/g, '!')
         .replace(/¿/g, '?')
         .replace(/ñ/g, 'n')
         .replace(/Ñ/g, 'N')
-        .replace(/[^\x20-\x7E\n\r]/g, '') // Conserva solo caracteres ASCII imprimibles y saltos de línea
+        .replace(/[^\x20-\x7E\n\r]/g, '')
         .trim();
 }
 
@@ -30,15 +28,12 @@ class ThermalPrinterService {
         }
     }
 
-    /**
-     * Inicializa la impresora BLE y solicita permisos si es necesario
-     */
     async requestBluetoothPermissions(): Promise<boolean> {
         if (Platform.OS !== 'android') return true;
 
         try {
             const apiLevel = Platform.Version;
-            
+
             if (typeof apiLevel === 'number' && apiLevel >= 31) {
                 const granted = await PermissionsAndroid.requestMultiple([
                     'android.permission.BLUETOOTH_SCAN' as any,
@@ -72,9 +67,6 @@ class ThermalPrinterService {
         }
     }
 
-    /**
-     * Inicializa la librería BLE
-     */
     async initPrinter(): Promise<any> {
         const BLEPrinter = this.getBLEPrinterInstance();
         if (!BLEPrinter) {
@@ -85,16 +77,13 @@ class ThermalPrinterService {
 
         const hasPermissions = await this.requestBluetoothPermissions();
         if (!hasPermissions) throw new Error('Permisos de Bluetooth no concedidos');
-        
+
         await BLEPrinter.init();
         this.initialized = true;
         console.log('[PRINT] BLE Printer initialized');
         return BLEPrinter;
     }
 
-    /**
-     * Obtiene la lista de impresoras BLE disponibles
-     */
     async findPrinters(): Promise<any[]> {
         try {
             const BLEPrinter = await this.initPrinter();
@@ -102,7 +91,7 @@ class ThermalPrinterService {
 
             console.log('[PRINT] Buscando impresoras BLE...');
             const devices = await BLEPrinter.getDeviceList();
-            
+
             return (devices || []).map((d: any) => ({
                 name: d.device_name || 'Impresora BT',
                 address: d.inner_mac_address,
@@ -116,10 +105,6 @@ class ThermalPrinterService {
         }
     }
 
-    /**
-     * Imprime un recibo usando BLE con formato idéntico a la web,
-     * bordes limpios y sin caracteres extraños ni chinos.
-     */
     async printReceipt(printerAddress: string, receipt: ReceiptData): Promise<void> {
         try {
             const BLEPrinter = await this.initPrinter();
@@ -158,36 +143,31 @@ class ThermalPrinterService {
             const separator = '-'.repeat(LINE_WIDTH);
             const dottedSeparator = '.'.repeat(LINE_WIDTH);
 
-            // Secuencia de inicialización ESC/POS:
-            // 1. ESC @ (\x1b@): Reinicializar impresora
-            // 2. FS . (\x1c.): Cancelar modo de caracteres chinos (Kanji mode OFF)
-            // 3. ESC t 0 (\x1bt\x00): Seleccionar tabla de caracteres estándar (PC437 / USA)
+            // ESC @ reinicializar, FS . cancelar modo chino, ESC t 0 tabla ASCII estándar
             let receiptText = '\x1b@\x1c.\x1bt\x00';
 
-            // Encabezado con marco superior tipo ticket
+            // ── Encabezado: solo CREDINICA (sin "RECIBO DE PAGO") ──
             receiptText += borderLine + '\n';
             receiptText += '|' + center('CREDINICA', LINE_WIDTH - 2) + '|\n';
-            receiptText += '|' + center('RECIBO DE PAGO', LINE_WIDTH - 2) + '|\n';
             receiptText += borderLine + '\n';
 
-            // Datos generales
+            // Fecha impresión
             const todayStr = new Date().toLocaleDateString('es-NI');
-            receiptText += leftRight('Fecha Impresion:', todayStr) + '\n';
+            receiptText += center('Fecha Impresion: ' + todayStr) + '\n';
             receiptText += separator + '\n';
+
+            // Datos del recibo
             receiptText += leftRight('No. Recibo:', receipt.transactionNumber || '') + '\n';
             receiptText += leftRight('No. Credito:', receipt.creditNumber || '') + '\n';
             receiptText += leftRight('Fecha Pago:', receipt.paymentDate || '') + '\n';
             receiptText += separator + '\n';
 
-            // Cliente
-            receiptText += 'CLIENTE:\n';
-            receiptText += cleanAscii(receipt.clientName || '').toUpperCase() + '\n';
-            if (receipt.clientCode) {
-                receiptText += leftRight('CODIGO:', receipt.clientCode) + '\n';
-            }
+            // Cliente centrado, sin código
+            receiptText += center('CLIENTE:') + '\n';
+            receiptText += center(cleanAscii(receipt.clientName || '').toUpperCase()) + '\n';
             receiptText += separator + '\n';
 
-            // Montos de Cuota y Mora
+            // Montos
             receiptText += leftRight('Cuota del Dia:', 'C$ ' + fmt(receipt.cuotaDelDia)) + '\n';
             receiptText += leftRight('Mora / Atraso:', 'C$ ' + fmt(receipt.montoAtrasado)) + '\n';
             receiptText += leftRight('Dias Mora:', (receipt.diasMora ?? 0).toString()) + '\n';
@@ -195,19 +175,21 @@ class ThermalPrinterService {
             receiptText += leftRight('Total a pagar:', 'C$ ' + fmt(receipt.totalAPagar)) + '\n';
             receiptText += separator + '\n';
 
-            // Monto recibido destacado
+            // Monto recibido — más grande con doble espacio arriba/abajo
             receiptText += center('MONTO RECIBIDO') + '\n';
+            receiptText += '\n';
             receiptText += center('C$ ' + fmt(receipt.amountPaid)) + '\n';
+            receiptText += '\n';
 
-            const isCancel = (receipt as any).is_cancelacion || 
+            // Solo mostrar concepto si es cancelación
+            const isCancel = (receipt as any).is_cancelacion ||
                 ((receipt as any).concepto && (receipt as any).concepto.includes('CANCEL')) ||
-                ((receipt.nuevoSaldo === 0 && (receipt.saldoAnterior || 0) > 0));
+                (receipt.nuevoSaldo === 0 && (receipt.saldoAnterior || 0) > 0);
 
-            const conceptStr = isCancel 
-                ? 'CONCEPTO: CANCELACION DE CREDITO' 
-                : ((receipt as any).concepto ? 'CONCEPTO: ' + cleanAscii((receipt as any).concepto).toUpperCase() : 'CONCEPTO: ABONO DE CREDITO');
-            
-            receiptText += center(conceptStr) + '\n';
+            if (isCancel) {
+                receiptText += center('CONCEPTO: CANCELACION DE CREDITO') + '\n';
+            }
+
             receiptText += separator + '\n';
 
             // Saldos
@@ -224,22 +206,15 @@ class ThermalPrinterService {
             receiptText += center('CONSERVE ESTE DOCUMENTO') + '\n';
             receiptText += separator + '\n';
 
-            // Agente y Sucursal
+            // Solo agente, sin sucursal
             if (receipt.managedBy) {
-                receiptText += leftRight('Agente:', cleanAscii(receipt.managedBy).toUpperCase()) + '\n';
-            }
-            if (receipt.sucursal) {
-                receiptText += leftRight('Sucursal:', cleanAscii(receipt.sucursal).toUpperCase()) + '\n';
+                receiptText += center('Agente: ' + cleanAscii(receipt.managedBy).toUpperCase()) + '\n';
             }
 
-            // Pie de ticket con borde
             receiptText += borderLine + '\n';
 
-            // 4 saltos de línea para que el papel salga más allá de la cuchilla de corte
-            receiptText += '\n\n\n\n';
-
             await BLEPrinter.printText(receiptText);
-            console.log('[PRINT] Impresión finalizada correctamente sin caracteres chinos.');
+            console.log('[PRINT] Impresión finalizada correctamente.');
         } catch (error: any) {
             console.error('[PRINT] Error de impresión:', error);
             throw new Error(error.message || 'Error de conexión con la impresora. Verifica que esté encendida y cerca.');
