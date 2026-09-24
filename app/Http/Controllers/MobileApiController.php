@@ -134,6 +134,24 @@ class MobileApiController extends Controller
             });
             $ultimoAbonoHoy = $abonosHoy->first();
 
+            $abonosHoyDetalle = $abonosHoy->map(function($a) use ($prestamo, $cid, $clientesMap) {
+                $c = $clientesMap[$cid] ?? [];
+                return [
+                    'id'               => $a->id,
+                    'abono_id'         => $a->id,
+                    'prestamo_id'      => $prestamo->id,
+                    'consecutivo'      => $prestamo->consecutivo,
+                    'cliente_id'       => $c['id'] ?? $cid,
+                    'cliente_nombre'   => $c['full_name'] ?? (($c['nombres'] ?? '') . ' ' . ($c['apellidos'] ?? '')),
+                    'cliente_cedula'   => $c['cedula'] ?? '',
+                    'cliente_direccion'=> $c['direccion'] ?? '',
+                    'monto'            => (float)$a->total_abonado,
+                    'fecha_abono'      => $a->fecha_abono,
+                    'created_at'       => (string)$a->created_at,
+                    'hora'             => $a->created_at ? \Carbon\Carbon::parse($a->created_at)->format('h:i A') : '',
+                ];
+            })->values()->toArray();
+
             $clientesMap[$cid]['prestamos'][] = [
                 'id'              => $prestamo->id,
                 'id_enc'          => $prestamo->id_enc,
@@ -150,6 +168,7 @@ class MobileApiController extends Controller
                 'ultimo_abono_id' => $ultimoAbonoHoy ? $ultimoAbonoHoy->id : null,
                 'tiene_abono_hoy' => $montoCobradoHoy > 0,
                 'promedio_atraso' => (float)$prestamo->promedio_dias_atraso,
+                'abonos_hoy'      => $abonosHoyDetalle,
             ];
 
             $clientesMap[$cid]['totalPendiente'] += (float)$prestamo->pendiente_abono;
@@ -907,7 +926,7 @@ class MobileApiController extends Controller
         $agente = $request->user();
         $buscar = trim($request->get('search', $request->get('buscar', '')));
 
-        // Obtener clientes del agente que tienen préstamos desembolsados y activos
+        // Obtener clientes del agente con préstamos desembolsados (excluyendo solo anulados 4)
         $clientes = User::join('prestamos as P', 'users.id', 'P.user_id')
             ->when($buscar, function ($query) use ($buscar) {
                 $query->where(function ($q) use ($buscar) {
@@ -917,7 +936,7 @@ class MobileApiController extends Controller
                 });
             })
             ->where('P.desembolsado', 1)
-            ->whereNotIn('P.estado', [2, 4]) // excluir pagados y anulados
+            ->whereNotIn('P.estado', [4]) // Excluir sólo anulados; permite activos 1 y cancelados 2
             ->where('P.agente_id', $agente->id)
             ->whereNull('P.fecha_clasificacion')
             ->select('users.*')
@@ -928,7 +947,7 @@ class MobileApiController extends Controller
 
         $all = [];
         $reloan = [];
-        $renewal = []; // Pestaña eliminada, retorna vacío
+        $renewal = [];
 
         foreach ($clientes as $c) {
             $prestamosActivos = prestamosModel::where('user_id', $c->id)
@@ -940,6 +959,19 @@ class MobileApiController extends Controller
 
             $totalSaldo = $prestamosActivos->sum('pendiente_abono');
             $primerPrestamoActivo = $prestamosActivos->first();
+
+            // Si no tiene préstamos activos, buscar su último préstamo cancelado (estado = 2)
+            $ultimoPrestamoCancelado = null;
+            if ($prestamosActivos->isEmpty()) {
+                $ultimoPrestamoCancelado = prestamosModel::where('user_id', $c->id)
+                    ->where('agente_id', $agente->id)
+                    ->where('estado', 2)
+                    ->where('desembolsado', 1)
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
+
+            $refPrestamo = $primerPrestamoActivo ?? $ultimoPrestamoCancelado;
 
             $clientData = [
                 'id'            => $c->id,
@@ -954,25 +986,32 @@ class MobileApiController extends Controller
                                      : '',
                 'totalSaldo'    => (float)$totalSaldo,
                 'activeCredits' => $prestamosActivos->count(),
-                'creditNumber'  => $primerPrestamoActivo ? ($primerPrestamoActivo->consecutivo ?? $primerPrestamoActivo->id) : '',
+                'creditNumber'  => $refPrestamo ? ($refPrestamo->consecutivo ?? $refPrestamo->id) : '',
+                'isReprestamo'  => true,
             ];
 
             $all[] = $clientData;
 
-            // Clasificación de REPRÉSTAMOS únicamente:
-            // - Tiene pagado el 75% o más del monto total / total financiado
-            // - Promedio de días de atraso del crédito actual < 2.5 días
+            // Clasificación de REPRÉSTAMOS:
+            // 1. Préstamo activo con 75% o más pagado y atraso < 2.5 días
             if ($primerPrestamoActivo && $primerPrestamoActivo->monto_financiado > 0) {
                 $pagado = max(0, (float)$primerPrestamoActivo->monto_financiado - (float)$primerPrestamoActivo->pendiente_abono);
                 $pctPagado = ($pagado / (float)$primerPrestamoActivo->monto_financiado) * 100;
                 $promedioAtraso = (float)$primerPrestamoActivo->promedio_dias_atraso;
 
-                if ($pctPagado >= 75 && $pctPagado < 100 && $promedioAtraso < 2.5) {
+                if ($pctPagado >= 75 && $promedioAtraso < 2.5) {
+                    $reloan[] = $clientData;
+                }
+            }
+            // 2. O cliente con préstamo 100% cancelado (estado 2) y buen historial
+            elseif ($ultimoPrestamoCancelado) {
+                $promedioAtraso = (float)$ultimoPrestamoCancelado->promedio_dias_atraso;
+                if ($promedioAtraso < 3.0) {
+                    $clientData['isCancelled'] = true;
                     $reloan[] = $clientData;
                 }
             }
         }
-
         return response()->json([
             'success' => true,
             'data'    => [

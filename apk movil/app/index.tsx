@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -14,6 +15,12 @@ export default function LoginScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const params = useLocalSearchParams();
     const { user, login } = useAuth();
+
+    useEffect(() => {
+        AsyncStorage.getItem('@last_login_username').then(saved => {
+            if (saved) setEmail(saved);
+        }).catch(() => {});
+    }, []);
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -37,6 +44,7 @@ export default function LoginScreen() {
 
             if (data.success) {
                 console.log('[LOGIN] Login exitoso, guardando sesión...', data.user.role);
+                AsyncStorage.setItem('@last_login_username', email.trim()).catch(() => {});
                 
                 // Persistimos los datos reales del usuario que devolvió Vercel
                 await login({
@@ -105,6 +113,11 @@ export default function LoginScreen() {
                                     placeholder="Tu nombre de usuario"
                                     placeholderTextColor="#94a3b8"
                                     autoCapitalize="none"
+                                    autoCorrect={false}
+                                    autoComplete="username"
+                                    textContentType="username"
+                                    importantForAutofill="yes"
+                                    returnKeyType="next"
                                     value={email}
                                     onChangeText={setEmail}
                                 />
@@ -120,6 +133,13 @@ export default function LoginScreen() {
                                     placeholder="Tu contraseña"
                                     placeholderTextColor="#94a3b8"
                                     secureTextEntry={!showPassword}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    autoComplete="current-password"
+                                    textContentType="password"
+                                    importantForAutofill="yes"
+                                    returnKeyType="go"
+                                    onSubmitEditing={handleLogin}
                                     value={password}
                                     onChangeText={setPassword}
                                 />
