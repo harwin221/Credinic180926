@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_ENDPOINTS } from '../config/api';
 import { apiFetch } from '../config/apiFetch';
 import CustomAlert from './CustomAlert';
@@ -30,6 +31,7 @@ const ESTADOS_CIVILES = [
 ];
 
 export default function ClientFormModal({ visible, onClose, onSuccess }: ClientFormModalProps) {
+    const insets = useSafeAreaInsets();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingLocations, setIsLoadingLocations] = useState(false);
     const [locations, setLocations] = useState<DepartamentoData[]>([]);
@@ -355,7 +357,7 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                     </KeyboardAvoidingView>
 
                     {/* Botón de guardar */}
-                    <View style={styles.buttonContainer}>
+                    <View style={[styles.buttonContainer, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 24 : 24) + 8 }]}>
                         <TouchableOpacity
                             style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                             onPress={handleSubmit}
@@ -586,7 +588,6 @@ const styles = StyleSheet.create({
     },
     buttonContainer: { 
          marginTop: 10, 
-         paddingBottom: Platform.OS === 'ios' ? 24 : 28,
     },
     submitButton: {
         flexDirection: 'row',

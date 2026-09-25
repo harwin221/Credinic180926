@@ -25,15 +25,17 @@ export const checkConnection = async (): Promise<boolean> => {
         const controller = new AbortController();
         const timeoutId  = setTimeout(() => controller.abort(), 4000);
 
-        // Hacemos una petición rápida GET a la raíz o a login
-        const response = await fetch(`${API_ENDPOINTS.base}/api/mobile/login`, {
+        // Usa apiFetch: incluye token y evita que una respuesta 401/405 por sesión
+        // se interprete erróneamente como falta de conexión WiFi/servidor.
+        const response = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/login`, {
             method: 'GET',
             signal: controller.signal
         }).catch(() => null);
 
         clearTimeout(timeoutId);
-        // Cualquier respuesta HTTP (incluso 405 Method Not Allowed) confirma conectividad real con el servidor
-        return response !== null && response.status > 0;
+        // Cualquier respuesta HTTP confirma que hay red y el servidor responde.
+        // 401/405 también son respuestas reales, no "sin señal".
+        return response !== null;
     } catch {
         return false;
     }
@@ -73,6 +75,9 @@ export const syncPendingPayments = async (): Promise<{
             const result = await response.json();
 
             if (result.success) {
+                // El servidor es la fuente de verdad: primero sincronizar y
+                // descargar la cartera, y solo después limpiar las vistas locales.
+                // Así el pago deja de verse como OFFLINE y el saldo queda actualizado.
                 await markPaymentAsSynced(payment.id);
                 synced++;
 

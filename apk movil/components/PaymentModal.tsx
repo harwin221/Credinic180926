@@ -74,7 +74,7 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                     };
                     
                     // Guardar en base de datos offline
-                    await savePendingPayment(credit.id, paymentData, session.id);
+                    await savePendingPayment(credit.id, paymentData, session.id, paymentId);
                     
                     // Cerrar el modal primero
                     setAmount('');

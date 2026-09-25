@@ -61,7 +61,7 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
             }
 
             await thermalPrinterService.printReceipt(printerAddress, receipt);
-            AlertHelper.alert('Éxito', 'Recibo impreso correctamente');
+            AlertHelper.alert('Éxito', 'Comando de impresión enviado a la impresora');
         } catch (e: any) {
             console.error('[PRINT] Error al imprimir:', e);
             AlertHelper.alert('Error de Impresión', e.message || 'No se pudo conectar con la impresora. Asegúrate de que el Bluetooth esté encendido y la impresora vinculada.');

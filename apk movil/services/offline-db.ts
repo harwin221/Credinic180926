@@ -243,9 +243,12 @@ export const getConfig = async (key: string): Promise<string | null> => {
 };
 
 // Guardar pago pendiente
-export const savePendingPayment = async (creditId: string, paymentData: any, userId: string) => {
+export const savePendingPayment = async (creditId: string, paymentData: any, userId: string, id?: string | number) => {
     try {
-        const timestamp = Date.now();
+        // Permite conservar el identificador OFFLINE mostrado en el recibo y
+        // usado por las vistas locales. Antes, SQLite generaba otro timestamp
+        // y el pago no podía relacionarse al limpiar o sincronizar.
+        const timestamp = id ?? Date.now();
         db.runSync(
             'INSERT INTO pending_payments (timestamp, creditId, paymentData, userId) VALUES (?, ?, ?, ?)',
             [timestamp, creditId, JSON.stringify(paymentData), userId]

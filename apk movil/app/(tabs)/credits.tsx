@@ -408,9 +408,17 @@ export default function CreditsScreen() {
         }, [fetchPortfolio])
     );
 
-    const onRefresh = () => {
+    const onRefresh = async () => {
         setRefreshing(true);
-        fetchPortfolio();
+        try {
+            // Al volver a Cartera, sincroniza pagos guardados y fuerza una
+            // lectura fresca del servidor; no basta con recargar la vista local.
+            const { fullSync } = await import('../../services/sync-service');
+            await fullSync();
+            await fetchPortfolio(true);
+        } finally {
+            setRefreshing(false);
+        }
     };
 
     // ─── Búsqueda en Cartera Local y Clientes Externos (igual que en la web) ──

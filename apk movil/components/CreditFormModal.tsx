@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sessionService } from '../services/session';
 import { API_ENDPOINTS } from '../config/api';
 import { apiFetch } from '../config/apiFetch';
@@ -125,6 +126,7 @@ function DropdownSelector({ label, options, selectedValue, onSelect, placeholder
 }
 
 export default function CreditFormModal({ visible, onClose, client, onSuccess }: CreditFormModalProps) {
+    const insets = useSafeAreaInsets();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [alert, setAlert] = useState<{
@@ -469,7 +471,7 @@ export default function CreditFormModal({ visible, onClose, client, onSuccess }:
                     </KeyboardAvoidingView>
 
                     {/* Botón de submit */}
-                    <View style={styles.buttonContainer}>
+                    <View style={[styles.buttonContainer, { paddingBottom: Math.max(insets.bottom, 24) + 8 }]}>
                         <TouchableOpacity
                             style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                             onPress={handleSubmit}
@@ -645,7 +647,6 @@ const styles = StyleSheet.create({
     },
     buttonContainer: { 
          marginTop: 10, 
-         paddingBottom: Platform.OS === 'ios' ? 24 : 28,
     },
     submitButton: {
         flexDirection: 'row',
