@@ -4,6 +4,7 @@ const getLocalDateStr = (d: Date = new Date()): string => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 };
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS } from '../config/api';
 import { apiFetch } from '../config/apiFetch';
 import {
@@ -18,20 +19,21 @@ import {
 } from './offline-db';
 import { sessionService } from './session';
 
-// Verificar si hay conexión — usa el servidor real de la app
+// Verificar si hay conexión real contra el servidor
 export const checkConnection = async (): Promise<boolean> => {
     try {
         const controller = new AbortController();
-        const timeoutId  = setTimeout(() => controller.abort(), 5000);
+        const timeoutId  = setTimeout(() => controller.abort(), 4000);
 
-        const response = await fetch(API_ENDPOINTS.mobile_login.replace('/login', '/ping'), {
-            method: 'HEAD',
+        // Hacemos una petición rápida GET a la raíz o a login
+        const response = await fetch(`${API_ENDPOINTS.base}/api/mobile/login`, {
+            method: 'GET',
             signal: controller.signal
         }).catch(() => null);
 
         clearTimeout(timeoutId);
-        // Cualquier respuesta del servidor (incluso 404/405) confirma que hay conexión
-        return response !== null;
+        // Cualquier respuesta HTTP (incluso 405 Method Not Allowed) confirma conectividad real con el servidor
+        return response !== null && response.status > 0;
     } catch {
         return false;
     }
@@ -48,6 +50,10 @@ export const syncPendingPayments = async (): Promise<{
     let synced = 0;
     let failed = 0;
     const errors: string[] = [];
+
+    const todayDateStr = getLocalDateStr();
+    const todayAbonosKey = `@credinic_abonos_individuales_${todayDateStr}`;
+    const todayCobradosKey = `@credinic_cobrados_hoy_${todayDateStr}`;
 
     for (const payment of pendingPayments) {
         try {
@@ -69,6 +75,31 @@ export const syncPendingPayments = async (): Promise<{
             if (result.success) {
                 await markPaymentAsSynced(payment.id);
                 synced++;
+
+                // Limpiar o actualizar en AsyncStorage para que no persista como OFFLINE en "Cobrado Hoy"
+                try {
+                    const localAbonosStr = await AsyncStorage.getItem(todayAbonosKey);
+                    if (localAbonosStr) {
+                        const localAbonos = JSON.parse(localAbonosStr);
+                        // Filtramos el pago temporal offline o actualizamos su abonoId
+                        const updated = localAbonos.filter((a: any) => 
+                            String(a.id) !== String(payment.id) &&
+                            String(a.receiptNumber) !== String(payment.id) &&
+                            a.id !== `OFFLINE-${payment.id}`
+                        );
+                        await AsyncStorage.setItem(todayAbonosKey, JSON.stringify(updated));
+                    }
+                    const cobradosStr = await AsyncStorage.getItem(todayCobradosKey);
+                    if (cobradosStr) {
+                        const cobrados = JSON.parse(cobradosStr);
+                        const updatedCobrados = cobrados.filter((c: any) => 
+                            String(c.id) !== String(payment.creditId) || c.ultimoAbonoId !== null
+                        );
+                        await AsyncStorage.setItem(todayCobradosKey, JSON.stringify(updatedCobrados));
+                    }
+                } catch (cleanErr) {
+                    console.warn('[SYNC] Error limpiando AsyncStorage para pago sincronizado:', cleanErr);
+                }
             } else {
                 failed++;
                 errors.push(`Pago ${payment.id}: ${result.message}`);

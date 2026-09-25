@@ -24,7 +24,7 @@ import PaymentModal from '../../components/PaymentModal';
 import ReceiptModal, { ReceiptData } from '../../components/ReceiptModal';
 import CustomAlert from '../../components/CustomAlert';
 import { AlertHelper } from '../../utils/custom-alert-helper';
-import { savePendingPayment } from '../../services/offline-db';
+import { savePendingPayment, getPendingPayments } from '../../services/offline-db';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface CreditItem {
@@ -320,8 +320,16 @@ export default function CreditsScreen() {
                     console.error('[STORAGE] Error leyendo abonos individuales:', e);
                 }
 
+                // Obtener pagos que verdaderamente están pendientes en la BD offline local (SQLite)
+                let actualPendingPayments: any[] = [];
+                try {
+                    actualPendingPayments = await getPendingPayments();
+                } catch (err) {
+                    console.warn('[STORAGE] Error leyendo pending payments:', err);
+                }
+                const pendingIdsSet = new Set(actualPendingPayments.map(p => String(p.id)));
+
                 // Fusionar abonos: el servidor es la fuente de verdad.
-                // Preservar receiptData del caché local y agregar solo pagos offline (abonoId === null).
                 const mergedAbonosList = [...serverAbonos];
                 // Preservar receiptData que solo existe localmente
                 for (const item of mergedAbonosList) {
@@ -330,13 +338,19 @@ export default function CreditsScreen() {
                         if (cached?.receiptData) item.receiptData = cached.receiptData;
                     }
                 }
-                // Agregar únicamente pagos offline que aún no se han sincronizado (sin abonoId)
+                // Agregar únicamente pagos offline que REALMENTE sigan pendientes en SQLite
                 for (const local of localAbonos) {
-                    if (local.abonoId === null && !mergedAbonosList.some(m => m.id === local.id)) {
+                    const isTrulyPending = local.abonoId === null && (
+                        pendingIdsSet.has(String(local.id)) ||
+                        pendingIdsSet.has(String(local.id).replace('OFFLINE-', '')) ||
+                        pendingIdsSet.has(String(local.receiptNumber)) ||
+                        pendingIdsSet.has(String(local.receiptNumber).replace('OFFLINE-', ''))
+                    );
+                    if (isTrulyPending && !mergedAbonosList.some(m => m.id === local.id)) {
                         mergedAbonosList.push(local);
                     }
                 }
-                // Actualizar AsyncStorage para que coincida con la lista autorizada
+                // Actualizar AsyncStorage para que coincida con la lista autorizada limpia
                 AsyncStorage.setItem(getTodayAbonosKey(), JSON.stringify(mergedAbonosList)).catch(e =>
                     console.error('[STORAGE] Error actualizando abonos individuales:', e)
                 );
@@ -355,14 +369,14 @@ export default function CreditsScreen() {
 
                 setPortfolio(() => {
                     const mergedPaid = [...classifiedPaidToday];
-                    // Agregar solo pagos offline del caché local (sin abonoId = no sincronizados aún)
+                    // Agregar solo créditos que tengan un pago verdaderamente pendiente en SQLite
                     for (const item of localSavedPaid) {
+                        const hasPendingInSqlite = actualPendingPayments.some(p => String(p.creditId) === String(item.id));
                         const isOfflineOnly = !serverAbonos.some(sa => sa.creditId === item.id);
-                        if (isOfflineOnly && !mergedPaid.some(m => m.id === item.id)) {
+                        if (isOfflineOnly && hasPendingInSqlite && !mergedPaid.some(m => m.id === item.id)) {
                             mergedPaid.push(item);
                         }
                     }
-                    // NO mezclar prev.paidToday: el servidor es la fuente de verdad
                     mergedPaid.sort((a, b) => a.clientName.localeCompare(b.clientName));
                     // Sincronizar AsyncStorage con la lista autorizada
                     AsyncStorage.setItem(getTodayKey(), JSON.stringify(mergedPaid)).catch(e =>

@@ -8,6 +8,9 @@ import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
 import { AlertHelper } from '../../utils/custom-alert-helper';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPendingPayments } from '../../services/offline-db';
+
 export default function RecoveredScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { user, logout } = useAuth();
@@ -55,6 +58,17 @@ export default function RecoveredScreen() {
     const role = userRole || user?.role;
     if (!id || !role) return;
 
+    // Calcular primero abonos pendientes locales en SQLite
+    let offlinePaymentsTotal = 0;
+    let offlinePendingCount = 0;
+    try {
+      const pendingList = await getPendingPayments();
+      offlinePendingCount = pendingList.length;
+      offlinePaymentsTotal = pendingList.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+    } catch (e) {
+      console.warn('[DASHBOARD] Error leyendo pagos offline:', e);
+    }
+
     try {
       const url = `${API_ENDPOINTS.mobile_dashboard}?userId=${id}&role=${role}`;
       console.log('[DASHBOARD] Fetching:', url);
@@ -76,18 +90,31 @@ export default function RecoveredScreen() {
         }
 
         if (result.success) {
+          const serverTotal = parseFloat(result.total_recuperado) || 0;
+          const serverDia = parseFloat(result.dia_recaudado) || 0;
+          const serverCobrados = parseInt(result.clientes_cobrados) || 0;
+
           setDashboardData(prev => ({
             ...prev,
             gestorName: user?.fullName || prev.gestorName,
-            totalRecuperacion:     result.total_recuperado    ?? prev.totalRecuperacion,
-            diaRecaudado:          result.dia_recaudado       ?? prev.diaRecaudado,
+            totalRecuperacion:     serverTotal + offlinePaymentsTotal,
+            diaRecaudado:          serverDia + offlinePaymentsTotal,
             moraRecaudada:         result.mora_recaudada      ?? prev.moraRecaudada,
             proximoRecaudado:      result.proximo_recaudado   ?? prev.proximoRecaudado,
             vencidoRecaudado:      result.vencido_recaudado   ?? prev.vencidoRecaudado,
-            totalClientesCobrados: result.clientes_cobrados   ?? prev.totalClientesCobrados,
+            totalClientesCobrados: serverCobrados + offlinePendingCount,
           }));
         } else {
           console.error('[DASHBOARD] Error del servidor:', result.message);
+          // Si el servidor falla, al menos reflejar métricas con abonos offline
+          if (offlinePaymentsTotal > 0) {
+            setDashboardData(prev => ({
+              ...prev,
+              totalRecuperacion: Math.max(prev.totalRecuperacion, offlinePaymentsTotal),
+              diaRecaudado: Math.max(prev.diaRecaudado, offlinePaymentsTotal),
+              totalClientesCobrados: Math.max(prev.totalClientesCobrados, offlinePendingCount),
+            }));
+          }
         }
       } catch (parseError) {
         if (responseText) {
@@ -95,7 +122,16 @@ export default function RecoveredScreen() {
         }
       }
     } catch (error) {
-      console.error('Error fetching dashboard metrics:', error);
+      console.error('Error fetching dashboard metrics (offline mode active):', error);
+      // Sin conexión: mantener lo que teníamos + pagos offline registrados
+      if (offlinePaymentsTotal > 0) {
+        setDashboardData(prev => ({
+          ...prev,
+          totalRecuperacion: Math.max(prev.totalRecuperacion, offlinePaymentsTotal),
+          diaRecaudado: Math.max(prev.diaRecaudado, offlinePaymentsTotal),
+          totalClientesCobrados: Math.max(prev.totalClientesCobrados, offlinePendingCount),
+        }));
+      }
     }
   };
 

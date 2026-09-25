@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     },
     buttonContainer: { 
          marginTop: 10, 
-         paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+         paddingBottom: Platform.OS === 'ios' ? 24 : 28,
     },
     submitButton: {
         flexDirection: 'row',

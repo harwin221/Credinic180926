@@ -113,17 +113,19 @@ class ThermalPrinterService {
             }
 
             console.log('[PRINT] Conectando a:', printerAddress);
-            await BLEPrinter.connectPrinter(printerAddress);
+            if (typeof BLEPrinter.connectPrinter === 'function') {
+                await BLEPrinter.connectPrinter(printerAddress);
+            }
 
-            const fmt = (n: number) => {
-                const val = (n || 0).toFixed(2);
-                return val.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            const fmt = (n: any) => {
+                const num = parseFloat(n) || 0;
+                return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             };
 
             const LINE_WIDTH = 32;
 
             const center = (text: string, width = LINE_WIDTH) => {
-                const clean = cleanAscii(text);
+                const clean = cleanAscii(String(text || ''));
                 const spaces = Math.max(0, width - clean.length);
                 const left = Math.floor(spaces / 2);
                 const right = spaces - left;
@@ -131,8 +133,8 @@ class ThermalPrinterService {
             };
 
             const leftRight = (left: string, right: string, width = LINE_WIDTH) => {
-                const cleanLeft = cleanAscii(left);
-                const cleanRight = cleanAscii(right);
+                const cleanLeft = cleanAscii(String(left || ''));
+                const cleanRight = cleanAscii(String(right || ''));
                 const total = cleanLeft.length + cleanRight.length;
                 if (total >= width) return cleanLeft + ' ' + cleanRight;
                 const spaces = width - total;
@@ -157,20 +159,20 @@ class ThermalPrinterService {
             receiptText += separator + '\n';
 
             // Datos del recibo
-            receiptText += leftRight('No. Recibo:', receipt.transactionNumber || '') + '\n';
-            receiptText += leftRight('No. Credito:', receipt.creditNumber || '') + '\n';
-            receiptText += leftRight('Fecha Pago:', receipt.paymentDate || '') + '\n';
+            receiptText += leftRight('No. Recibo:', String(receipt.transactionNumber || '')) + '\n';
+            receiptText += leftRight('No. Credito:', String(receipt.creditNumber || '')) + '\n';
+            receiptText += leftRight('Fecha Pago:', String(receipt.paymentDate || '')) + '\n';
             receiptText += separator + '\n';
 
             // Cliente centrado, sin código
             receiptText += center('CLIENTE:') + '\n';
-            receiptText += center(cleanAscii(receipt.clientName || '').toUpperCase()) + '\n';
+            receiptText += center(cleanAscii(String(receipt.clientName || '')).toUpperCase()) + '\n';
             receiptText += separator + '\n';
 
             // Montos
             receiptText += leftRight('Cuota del Dia:', 'C$ ' + fmt(receipt.cuotaDelDia)) + '\n';
             receiptText += leftRight('Mora / Atraso:', 'C$ ' + fmt(receipt.montoAtrasado)) + '\n';
-            receiptText += leftRight('Dias Mora:', (receipt.diasMora ?? 0).toString()) + '\n';
+            receiptText += leftRight('Dias Mora:', String(receipt.diasMora ?? 0)) + '\n';
             receiptText += dottedSeparator + '\n';
             receiptText += leftRight('Total a pagar:', 'C$ ' + fmt(receipt.totalAPagar)) + '\n';
             receiptText += separator + '\n';
@@ -182,8 +184,8 @@ class ThermalPrinterService {
             receiptText += '\n';
 
             const isCancel = (receipt as any).is_cancelacion ||
-                ((receipt as any).concepto && (receipt as any).concepto.includes('CANCEL')) ||
-                (receipt.nuevoSaldo === 0 && (receipt.saldoAnterior || 0) > 0);
+                ((receipt as any).concepto && String((receipt as any).concepto).includes('CANCEL')) ||
+                (Number(receipt.nuevoSaldo) === 0 && Number(receipt.saldoAnterior || 0) > 0);
 
             // Concepto — siempre visible igual que el recibo web
             if (isCancel) {
@@ -210,12 +212,18 @@ class ThermalPrinterService {
 
             // Solo agente, sin sucursal
             if (receipt.managedBy) {
-                receiptText += center('Agente: ' + cleanAscii(receipt.managedBy).toUpperCase()) + '\n';
+                receiptText += center('Agente: ' + cleanAscii(String(receipt.managedBy)).toUpperCase()) + '\n';
             }
 
             receiptText += borderLine + '\n';
 
-            await BLEPrinter.printText(receiptText);
+            if (typeof BLEPrinter.printText === 'function') {
+                await BLEPrinter.printText(receiptText);
+            } else if (typeof BLEPrinter.printBill === 'function') {
+                await BLEPrinter.printBill(receiptText);
+            } else {
+                throw new Error('El módulo BLEPrinter no tiene método de impresión disponible.');
+            }
             console.log('[PRINT] Impresión finalizada correctamente.');
         } catch (error: any) {
             console.error('[PRINT] Error de impresión:', error);
