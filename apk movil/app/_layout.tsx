@@ -6,7 +6,9 @@ import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 
 function RootLayoutContent() {
   const { user, isLoading, isLoggingOut } = useAuth();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
+  // La pantalla de login es la raíz (index). segments[0] puede ser undefined
+  // durante el arranque, por eso se compara de forma segura.
   const inAuthGroup = segments.length === 0 || segments[0] === 'index'; // La pantalla de login es la raíz (index)
 
   useEffect(() => {

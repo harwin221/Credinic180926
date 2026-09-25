@@ -490,7 +490,7 @@ export default function CreditsScreen() {
                 const now = new Date().toLocaleString('es-NI');
                 setReceiptData({
                     transactionNumber: paymentItem.receiptNumber || (paymentItem.abonoId ? `REC-${String(paymentItem.abonoId).padStart(6, '0')}` : 'REC-REIMPRESION'),
-                    creditNumber: paymentItem.creditNumber || paymentItem.creditId,
+                    creditNumber: String(paymentItem.creditNumber || paymentItem.creditId),
                     clientName: paymentItem.clientName,
                     clientCode: paymentItem.clientCode,
                     paymentDate: paymentItem.hora ? `${paymentItem.fechaAbono} ${paymentItem.hora}` : now,
@@ -527,7 +527,7 @@ export default function CreditsScreen() {
         try {
             const session = await sessionService.getSession();
             const endpoint = (API_ENDPOINTS as any).mobile_recibo || `${API_ENDPOINTS.base}/api/mobile/recibo`;
-            
+
             const response = await apiFetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -547,7 +547,7 @@ export default function CreditsScreen() {
                 const now = new Date().toLocaleString('es-NI');
                 setReceiptData({
                     transactionNumber: item.ultimoAbonoId ? `REC-${String(item.ultimoAbonoId).padStart(6, '0')}` : 'REC-REIMPRESION',
-                    creditNumber: item.creditNumber || item.id,
+                    creditNumber: String(item.creditNumber || item.id),
                     clientName: item.clientName,
                     clientCode: item.clientCode,
                     paymentDate: now,
@@ -593,7 +593,7 @@ export default function CreditsScreen() {
 
             const offlineReceipt: ReceiptData = {
                 transactionNumber: paymentData.offlineId,
-                creditNumber:      selectedCredit.creditNumber || selectedCredit.id,
+                creditNumber:      String(selectedCredit.creditNumber || selectedCredit.id),
                 clientName:        selectedCredit.clientName,
                 clientCode:        selectedCredit.clientCode,
                 paymentDate:       now,
@@ -665,7 +665,7 @@ export default function CreditsScreen() {
                     transactionNumber: result.abono_id
                         ? `REC-${String(result.abono_id).padStart(6, '0')}`
                         : 'N/A',
-                    creditNumber:     selectedCredit.creditNumber || selectedCredit.id,
+                    creditNumber:     String(selectedCredit.creditNumber || selectedCredit.id),
                     clientName:       selectedCredit.clientName,
                     clientCode:       selectedCredit.clientCode,
                     paymentDate:      now,
@@ -688,7 +688,7 @@ export default function CreditsScreen() {
                     transactionNumber: result.abono_id
                         ? `REC-${String(result.abono_id).padStart(6, '0')}`
                         : 'REC-LOCAL',
-                    creditNumber:     selectedCredit.creditNumber || selectedCredit.id,
+                    creditNumber:     String(selectedCredit.creditNumber || selectedCredit.id),
                     clientName:       selectedCredit.clientName,
                     clientCode:       selectedCredit.clientCode,
                     paymentDate:      now,

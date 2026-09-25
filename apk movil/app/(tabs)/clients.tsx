@@ -7,6 +7,7 @@ import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
 import CreditFormModal from '../../components/CreditFormModal';
+import { getMisClientesOffline, getClienteDetalleOffline, getReciboOffline } from '../../services/offline-reader';
 import ClientFormModal from '../../components/ClientFormModal';
 import CustomAlert from '../../components/CustomAlert';
 import { AlertHelper } from '../../utils/custom-alert-helper';
@@ -35,6 +36,7 @@ export default function ClientsScreen() {
     const [activeTab, setActiveTab] = useState('Mi Cartera');
     const [search, setSearch] = useState('');
     const [isLoading, setIsLoading] = useState(true);
+    const [isOfflineData, setIsOfflineData] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [data, setData] = useState<{ all: any[], reloan: any[], renewal: any[] }>({ all: [], reloan: [], renewal: [] });
     const [selectedClient, setSelectedClient] = useState<any>(null);
@@ -92,6 +94,17 @@ export default function ClientsScreen() {
                 result = await response.json();
             }
 
+            // Sin conexión: reconstruir el recibo con los abonos descargados.
+            if (!result || !result.success) {
+                console.log('[REPRINT] Servidor no disponible, generando recibo offline...');
+                const local = await getReciboOffline(abonoId, credit?.id);
+                if (!local) {
+                    AlertHelper.alert('Sin datos', 'No hay información local de este abono. Conéctate a internet para descargarlo.');
+                    return;
+                }
+                result = local;
+            }
+
             if (result && result.success && result.data) {
                 // Cerrar el modal del cliente primero para que el recibo sea visible
                 setSelectedClient(null);
@@ -133,7 +146,24 @@ export default function ClientsScreen() {
                     });
                 }
         } catch (e) {
-            console.error('Error fetching clients:', e);
+            // Sin conexión: servir la cartera desde SQLite para que el agente
+            // siga viendo sus clientes asignados.
+            console.log('[CLIENTES] Sin conexión, cargando cartera offline...', e);
+            try {
+                const local = await getMisClientesOffline(searchTerm);
+                if (local?.success) {
+                    setData({
+                        all:     (local.data.all || []).filter((c: any) => (c.activeCredits ?? 0) > 0),
+                        reloan:  (local.data.reloan || []).filter((c: any) => (c.activeCredits ?? 0) > 0),
+                        renewal: [],
+                    });
+                    setIsOfflineData(true);
+                } else {
+                    console.warn('[CLIENTES] No hay cartera guardada offline todavía.');
+                }
+            } catch (offlineErr) {
+                console.error('[CLIENTES] Error cargando cartera offline:', offlineErr);
+            }
         } finally {
             setIsLoading(false);
             setRefreshing(false);
@@ -161,7 +191,7 @@ export default function ClientsScreen() {
         setActiveDetailTab('detalles'); // Reset al tab de detalles
         try {
             const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/cliente-detalle?clientId=${client.id}`);
-            
+
             // Verificar si la respuesta es JSON válido
             const contentType = resp.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
@@ -177,9 +207,20 @@ export default function ClientsScreen() {
             } else {
                 AlertHelper.alert('Error', result.message || 'No se pudo cargar el detalle del cliente');
             }
-        } catch (e) { 
-            console.error('Error al cargar detalle del cliente:', e); 
-            AlertHelper.alert('Error de conexión', 'Verifica tu internet o la URL del servidor.');
+        } catch (e) {
+            // Sin conexión: reconstruir el detalle desde SQLite (plan, cuotas, abonos).
+            console.log('[CLIENTES] Sin conexión, cargando detalle offline...', e);
+            try {
+                const local = await getClienteDetalleOffline(client.id);
+                if (local) {
+                    setClientDetail(local);
+                } else {
+                    AlertHelper.alert('Sin datos', 'No hay información guardada de este cliente en el dispositivo. Conéctate a internet para descargarla.');
+                }
+            } catch (offlineErr) {
+                console.error('[CLIENTES] Error cargando detalle offline:', offlineErr);
+                AlertHelper.alert('Sin datos locales', 'No se pudo leer la información guardada del cliente.');
+            }
         }
         finally { setLoadingDetail(false); }
     };
@@ -288,6 +329,15 @@ export default function ClientsScreen() {
                         contentContainerStyle={styles.listContainer}
                         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0ea5e9']} />}
                     >
+                        {/* Aviso de que los datos vienen del dispositivo */}
+                        {isOfflineData && (
+                            <View style={styles.offlineBanner}>
+                                <MaterialCommunityIcons name="wifi-off" size={16} color="#f97316" />
+                                <Text style={styles.offlineBannerText}>
+                                    MODO OFFLINE — información guardada en el dispositivo
+                                </Text>
+                            </View>
+                        )}
                         {currentList.length > 0 ? currentList.map((client: any) => (
                             <TouchableOpacity key={`client_${client.id}_${client.codigo_cliente || ''}`} style={styles.card} onPress={() => handleSelectClient(client)} activeOpacity={0.7}>
                                 <View style={styles.avatar}>
@@ -302,7 +352,7 @@ export default function ClientsScreen() {
                                         </Text>
                                     ) : null}
                                     {(activeTab === 'Représtamos') && (
-                                        <TouchableOpacity 
+                                        <TouchableOpacity
                                             style={styles.createCreditButton}
                                             onPress={(e) => {
                                                 e.stopPropagation();
@@ -325,7 +375,7 @@ export default function ClientsScreen() {
                         )}
                     </ScrollView>
                 )}
-            
+
 </SafeAreaView>
 
             {/* Modal detalle del cliente */}
@@ -345,19 +395,19 @@ export default function ClientsScreen() {
                         <>
                             {/* Tabs para navegar entre secciones */}
                             <View style={styles.detailTabsWrapper}>
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     style={[styles.detailTab, activeDetailTab === 'detalles' && styles.activeDetailTab]}
                                     onPress={() => setActiveDetailTab('detalles')}
                                 >
                                     <Text style={[styles.detailTabText, activeDetailTab === 'detalles' && styles.activeDetailTabText]}>Detalles</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     style={[styles.detailTab, activeDetailTab === 'plan' && styles.activeDetailTab]}
                                     onPress={() => setActiveDetailTab('plan')}
                                 >
                                     <Text style={[styles.detailTabText, activeDetailTab === 'plan' && styles.activeDetailTabText]}>Plan de Pago</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     style={[styles.detailTab, activeDetailTab === 'historial' && styles.activeDetailTab]}
                                     onPress={() => setActiveDetailTab('historial')}
                                 >
@@ -483,7 +533,7 @@ export default function ClientsScreen() {
                                         <View style={styles.sectionHeader}>
                                             <Text style={styles.sectionTitle}>Plan de Pago</Text>
                                         </View>
-                                        
+
                                         {/* Tabla de Plan de Pago idéntica al reporte web */}
                                         <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableScrollContainer}>
                                             <View style={styles.tableContainer}>
@@ -496,7 +546,7 @@ export default function ClientsScreen() {
                                                     <Text style={[styles.tableHeaderText, { width: 105, textAlign: 'right' }]}>Nuevo Saldo</Text>
                                                     <Text style={[styles.tableHeaderText, { width: 85, textAlign: 'center' }]}>Estado</Text>
                                                 </View>
-                                                
+
                                                 {/* Filas del cronograma */}
                                                 {clientDetail.credits[0].paymentPlan?.map((plan: any, index: number) => (
                                                     <View key={index} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
@@ -544,7 +594,7 @@ export default function ClientsScreen() {
                                                     <Text style={styles.creditLabel}>Recibido por:</Text>
                                                     <Text style={styles.creditValue}>{payment.receivedBy || 'Agente'}</Text>
                                                 </View>
-                                                <TouchableOpacity 
+                                                <TouchableOpacity
                                                     style={styles.reprintBtnHistory}
                                                     onPress={() => handleReprintPayment(payment, clientDetail.credits[0])}
                                                     activeOpacity={0.8}
@@ -554,7 +604,7 @@ export default function ClientsScreen() {
                                                 </TouchableOpacity>
                                             </View>
                                         )) : (
-                                            <View style={styles.emptyContainer}>
+                                            <View style={styles.emptyCard}>
                                                 <MaterialCommunityIcons name="receipt" size={40} color="#cbd5e1" />
                                                 <Text style={[styles.emptyText, { marginTop: 8 }]}>No se han registrado abonos para este préstamo.</Text>
                                             </View>
@@ -610,8 +660,8 @@ export default function ClientsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { 
-        flex: 1, 
+    container: {
+        flex: 1,
         backgroundColor: '#fff',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
@@ -638,16 +688,16 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         letterSpacing: 0.5,
     },
-    searchWrapper: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: '#f1f5f9', 
-        borderRadius: 12, 
-        marginHorizontal: 20, 
+    searchWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f1f5f9',
+        borderRadius: 12,
+        marginHorizontal: 20,
         marginTop: 15,
-        marginBottom: 12, 
-        paddingHorizontal: 12, 
-        height: 44 
+        marginBottom: 12,
+        paddingHorizontal: 12,
+        height: 44
     },
     searchIcon: { marginRight: 8 },
     searchInput: { flex: 1, fontSize: 14, color: '#334155' },
@@ -674,21 +724,22 @@ const styles = StyleSheet.create({
     badgeBlue: { backgroundColor: '#eff6ff' },
     badgeGreen: { backgroundColor: '#f0fdf4' },
     badgeText: { fontSize: 11, fontWeight: '700', color: '#0ea5e9' },
-    createCreditButton: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: '#10b981', 
-        paddingHorizontal: 10, 
-        paddingVertical: 6, 
-        borderRadius: 16, 
+    createCreditButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#10b981',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 16,
         marginTop: 8,
         gap: 4,
     },
-    createCreditButtonText: { 
-        fontSize: 12, 
-        fontWeight: '700', 
-        color: '#fff' 
+    createCreditButtonText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#fff'
     },
+    emptyCard: { alignItems: 'center', paddingVertical: 24 },
     emptyText: { textAlign: 'center', color: '#94a3b8', marginTop: 40, fontSize: 14 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'android' ? 34 : 20, maxHeight: '88%' },
@@ -711,9 +762,11 @@ const styles = StyleSheet.create({
     creditLabel: { fontSize: 13, color: '#64748b' },
     creditValue: { fontSize: 13, fontWeight: '600', color: '#334155' },
     divider: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 },
-    
+
     // Estilos para tabla de plan de pago con scroll horizontal
     tableScrollContainer: { marginTop: 8 },
+    offlineBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', borderRadius: 8, padding: 10, marginBottom: 10 },
+    offlineBannerText: { fontSize: 11, fontWeight: '700', color: '#c2410c', flex: 1 },
     tableContainer: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, overflow: 'hidden' },
     tableHeader: { flexDirection: 'row', backgroundColor: '#0ea5e9', paddingVertical: 10, paddingHorizontal: 4 },
     tableHeaderText: { fontSize: 11, fontWeight: '700', color: '#fff', textAlign: 'center' },

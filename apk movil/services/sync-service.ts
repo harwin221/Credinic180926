@@ -14,6 +14,7 @@ import {
     markCreditAsSynced,
     saveClientsOffline,
     saveCreditsOffline,
+    saveAbonosOffline,
     setConfig,
     getConfig
 } from './offline-db';
@@ -87,7 +88,7 @@ export const syncPendingPayments = async (): Promise<{
                     if (localAbonosStr) {
                         const localAbonos = JSON.parse(localAbonosStr);
                         // Filtramos el pago temporal offline o actualizamos su abonoId
-                        const updated = localAbonos.filter((a: any) => 
+                        const updated = localAbonos.filter((a: any) =>
                             String(a.id) !== String(payment.id) &&
                             String(a.receiptNumber) !== String(payment.id) &&
                             a.id !== `OFFLINE-${payment.id}`
@@ -97,7 +98,7 @@ export const syncPendingPayments = async (): Promise<{
                     const cobradosStr = await AsyncStorage.getItem(todayCobradosKey);
                     if (cobradosStr) {
                         const cobrados = JSON.parse(cobradosStr);
-                        const updatedCobrados = cobrados.filter((c: any) => 
+                        const updatedCobrados = cobrados.filter((c: any) =>
                             String(c.id) !== String(payment.creditId) || c.ultimoAbonoId !== null
                         );
                         await AsyncStorage.setItem(todayCobradosKey, JSON.stringify(updatedCobrados));
@@ -194,6 +195,7 @@ export const downloadOfflineData = async (): Promise<{
         // Armar lista de créditos para la tabla offline_credits
         const hoy = getLocalDateStr();
         const allCredits: any[] = [];
+        const allAbonos: any[] = [];
 
         for (const cliente of clientes) {
             for (const prestamo of (cliente.prestamos || [])) {
@@ -206,6 +208,26 @@ export const downloadOfflineData = async (): Promise<{
                 );
                 const overdueAmount = cuotasVenc.reduce(
                     (s: number, c: any) => s + (parseFloat(c.monto_pendiente_cuota) || parseFloat(c.monto_cuota) || 0), 0
+                );
+
+                // Plan de pagos completo: sin esto el agente no puede ver el
+                // estado de cuenta sin señal, que es el propósito del modo offline.
+                const paymentPlan = cuotas.map((c: any, idx: number) => ({
+                    numero:    c.numero_cuota ?? idx + 1,
+                    fecha:     c.fecha_cuota,
+                    monto:     parseFloat(c.monto_cuota) || 0,
+                    interes:   parseFloat(c.monto_interes) || 0,
+                    mora:      parseFloat(c.monto_mora) || 0,
+                    pendiente: parseFloat(c.monto_pendiente_cuota) || 0,
+                    estado:    c.estado,
+                    pagada:    c.estado === 3,
+                }));
+
+                const totalInteres = cuotas.reduce(
+                    (s: number, c: any) => s + (parseFloat(c.monto_interes) || 0), 0
+                );
+                const totalCapital = cuotas.reduce(
+                    (s: number, c: any) => s + ((parseFloat(c.monto_cuota) || 0) - (parseFloat(c.monto_interes) || 0)), 0
                 );
 
                 allCredits.push({
@@ -221,18 +243,48 @@ export const downloadOfflineData = async (): Promise<{
                     paymentFrequency:   '',
                     collectionsManager: session.fullName,
                     details:            { dueTodayAmount, overdueAmount, remainingBalance: parseFloat(prestamo.pendiente_abono) || 0, lateDays: cuotasVenc.length, paidToday: 0 },
-                    paymentPlan:        [],
+                    paymentPlan,
+                    filas:              cuotas,
+                    totalCapital,
+                    totalInteres,
+                    promedioAtraso:     parseFloat(prestamo.promedio_dias_atraso) || 0,
+                    estado:             prestamo.estado ?? 1,
+                    tipo_abono:         prestamo.tipo_abono ?? 1,
                 });
+
+                // Abonos ya realizados: permiten reimprimir recibos antiguos sin conexión.
+                for (const abono of (prestamo.abonos || [])) {
+                    if (abono.estado !== 1) continue; // Solo abonos vigentes.
+                    allAbonos.push({
+                        id:            `SRV-${prestamo.id}-${abono.id}`,
+                        clientId:      String(cliente.id),
+                        creditId:      String(prestamo.id),
+                        abonoId:       abono.id,
+                        receiptNumber: 'REC-' + String(abono.id).padStart(6, '0'),
+                        monto:         parseFloat(abono.total_abonado) || 0,
+                        fecha:         abono.fecha_abono || abono.created_at || '',
+                        detalle: {
+                            creditNumber:   prestamo.consecutivo || '',
+                            clientName:     cliente.full_name || `${cliente.nombres} ${cliente.apellidos}`,
+                            clientCode:     cliente.cedula || String(cliente.id),
+                            paymentDate:    abono.fecha_abono || abono.created_at || '',
+                            monto:          parseFloat(abono.total_abonado) || 0,
+                            tipo_abono:     abono.tipo_abono,
+                            referencia:     abono.referencia_transferencia || '',
+                        },
+                    });
+                }
             }
         }
 
         await saveClientsOffline(allClients);
         await saveCreditsOffline(allCredits);
+        await saveAbonosOffline(allAbonos);
         await setConfig('lastSync', Date.now().toString());
 
         return {
             success: true,
-            message: `Descargados ${allClients.length} clientes y ${allCredits.length} créditos`,
+            message: `Descargados ${allClients.length} clientes, ${allCredits.length} créditos y ${allAbonos.length} abonos`,
         };
     } catch (error: any) {
         return { success: false, message: error.message };

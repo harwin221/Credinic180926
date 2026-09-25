@@ -388,6 +388,7 @@ class prestamosController extends Controller
         DB::commit();
         return redirect()->back()->with('success', 'Préstamo actualizado con éxito');
         } catch (\Exception $ex) {
+            DB::rollBack();
             logger()->error('Error al actualizar el prestamo ' . $ex->getMessage());
             return redirect()->back()->with('error', 'Error al actualizar el prestamo: ' . $ex->getMessage());
         }

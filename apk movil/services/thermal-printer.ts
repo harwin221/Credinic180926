@@ -1,4 +1,5 @@
 import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ReceiptData } from '../components/ReceiptModal';
 
 // Función para limpiar texto y convertirlo a ASCII puro
@@ -103,6 +104,50 @@ class ThermalPrinterService {
             Alert.alert('Impresora Bluetooth', error.message || 'No se pudieron buscar impresoras Bluetooth.');
             return [];
         }
+    }
+
+    /**
+     * Heurística de dirección Bluetooth válida (MAC).
+     * Un nombre de dispositivo tipo "Impresora Termica 58" NO es una dirección
+     * y pasarlo a connectPrinter hace fallar la conexión.
+     */
+    private isValidAddress(value: string | null | undefined): boolean {
+        if (!value) return false;
+        return /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/.test(value.trim());
+    }
+
+    /**
+     * Resuelve la dirección de la impresora guardada.
+     *
+     * Antes se usaba `savedTarget || savedPrinter`, así que cuando la dirección
+     * no estaba guardada se pasaba el NOMBRE del dispositivo a connectPrinter y
+     * la impresión fallaba siempre. Ahora se valida la dirección y, si no hay
+     * ninguna válida, se scannea para recuperar la MAC real.
+     */
+    async resolvePrinterAddress(): Promise<{ address: string; name: string }> {
+        const savedTarget   = await AsyncStorage.getItem('selectedPrinterTarget');
+        const savedPrinter  = await AsyncStorage.getItem('selectedPrinter');
+
+        if (this.isValidAddress(savedTarget)) {
+            return { address: savedTarget!.trim(), name: savedPrinter || '' };
+        }
+
+        if (this.isValidAddress(savedPrinter)) {
+            // Se guardó la MAC en 'selectedPrinter' en versiones anteriores.
+            return { address: savedPrinter!.trim(), name: savedPrinter!.trim() };
+        }
+
+        // No hay dirección utilizable: escanear y tomar la primera impresora.
+        console.log('[PRINT] No hay dirección guardada, escaneando...');
+        const devices = await this.findPrinters();
+        const first = devices.find((d: any) => this.isValidAddress(d.address));
+        if (first) {
+            await AsyncStorage.setItem('selectedPrinterTarget', first.address);
+            if (first.name) await AsyncStorage.setItem('selectedPrinter', first.name);
+            return { address: first.address, name: first.name || '' };
+        }
+
+        return { address: '', name: savedPrinter || '' };
     }
 
     async printReceipt(printerAddress: string, receipt: ReceiptData): Promise<void> {

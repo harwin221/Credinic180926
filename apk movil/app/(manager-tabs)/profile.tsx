@@ -45,8 +45,13 @@ export default function ProfileScreen() {
 
     const handleSelectPrinter = async (printer: any) => {
         await AsyncStorage.setItem('selectedPrinter', printer.name);
-        if (printer.target) {
-            await AsyncStorage.setItem('selectedPrinterTarget', printer.target);
+        // findPrinters() devuelve la MAC en `address` (ver services/thermal-printer.ts).
+        // Antes se leía `printer.target`, que nunca existía, así que
+        // 'selectedPrinterTarget' quedaba sin guardar y ReceiptModal acababa
+        // conectando con el NOMBRE de la impresora en vez de su dirección.
+        const target = printer.address || printer.target;
+        if (target) {
+            await AsyncStorage.setItem('selectedPrinterTarget', target);
         }
         setSelectedPrinter(printer.name);
         setShowPrinterModal(false);

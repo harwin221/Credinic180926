@@ -51,16 +51,21 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
     const handlePrint = async () => {
         setPrinting(true);
         try {
-            const savedTarget = await AsyncStorage.getItem('selectedPrinterTarget');
-            const savedPrinter = await AsyncStorage.getItem('selectedPrinter');
-            const printerAddress = savedTarget || savedPrinter;
+            // Resuelve la MAC real. Antes se pasaba 'selectedPrinter' (el NOMBRE)
+            // cuando 'selectedPrinterTarget' no existia, y connectPrinter fallaba.
+            const { address, name } = await thermalPrinterService.resolvePrinterAddress();
 
-            if (!printerAddress || printerAddress === 'Default') {
-                AlertHelper.alert('Sin impresora', 'No hay impresora seleccionada. Ve a tu perfil y selecciona la impresora Bluetooth.');
+            if (!address) {
+                AlertHelper.alert(
+                    'Sin impresora',
+                    name
+                        ? `No se encontró la dirección Bluetooth de "${name}". Asegúrate de que la impresora esté encendida y emparejada, y vuelve a seleccionarla desde tu perfil.`
+                        : 'No hay impresora seleccionada. Ve a tu perfil y selecciona la impresora Bluetooth.'
+                );
                 return;
             }
 
-            await thermalPrinterService.printReceipt(printerAddress, receipt);
+            await thermalPrinterService.printReceipt(address, receipt);
             AlertHelper.alert('Éxito', 'Comando de impresión enviado a la impresora');
         } catch (e: any) {
             console.error('[PRINT] Error al imprimir:', e);

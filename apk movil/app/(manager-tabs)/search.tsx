@@ -150,7 +150,7 @@ export default function SearchScreen() {
                         placeholderTextColor="#94a3b8"
                         value={searchQuery}
                         onChangeText={setSearchQuery}
-                        onSubmitEditing={handleSearch}
+                        onSubmitEditing={() => { handleSearch(); }}
                         returnKeyType="search"
                     />
                     {searchQuery.length > 0 && (
@@ -159,9 +159,9 @@ export default function SearchScreen() {
                         </TouchableOpacity>
                     )}
                 </View>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.searchButton}
-                    onPress={handleSearch}
+                    onPress={() => { handleSearch(); }}
                     disabled={isSearching}
                 >
                     {isSearching ? (

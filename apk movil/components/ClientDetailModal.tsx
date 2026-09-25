@@ -435,9 +435,15 @@ export default function ClientDetailModal({
                                                 const itemDate = item.fecha_cuota || item.paymentDate || item.dueDate || item.date;
                                                 const saldoNum = Number(item.saldo ?? item.balance ?? 0);
                                                 const cuotaNum = Number(item.monto_cuota ?? item.quota ?? item.amount ?? 0);
-                                                const isPaid = item.estado === 3 || 
-                                                               item.status === 'PAGADA' || 
-                                                               (saldoNum <= 0.01 && cuotaNum > 0);
+                                                // No asumir que una cuota está pagada porque el backend
+                                                // devuelva saldo=0 o porque falte el saldo. En créditos
+                                                // desembolsados hoy, varias cuotas futuras llegan sin saldo
+                                                // y se marcaban erróneamente como PG.
+                                                const explicitPaid = item.pagado ?? item.paid;
+                                                const isPaid = item.estado === 3 ||
+                                                               String(item.status || '').toUpperCase() === 'PAGADA' ||
+                                                               (explicitPaid !== undefined && explicitPaid !== null &&
+                                                                Number(explicitPaid) >= Math.max(0, Number(cuotaNum) - 0.01));
                                                 return (
                                                     <View 
                                                         key={idx} 
