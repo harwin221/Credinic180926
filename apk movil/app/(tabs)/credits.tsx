@@ -320,19 +320,26 @@ export default function CreditsScreen() {
                     console.error('[STORAGE] Error leyendo abonos individuales:', e);
                 }
 
-                // Fusionar abonos de forma deduplicada
-                const mergedAbonosList = [...localAbonos];
-                for (const sa of serverAbonos) {
-                    const idx = mergedAbonosList.findIndex(m => (m.abonoId && m.abonoId === sa.abonoId) || m.id === sa.id);
-                    if (idx >= 0) {
-                        if (!sa.receiptData && mergedAbonosList[idx].receiptData) {
-                            sa.receiptData = mergedAbonosList[idx].receiptData;
-                        }
-                        mergedAbonosList[idx] = { ...mergedAbonosList[idx], ...sa };
-                    } else {
-                        mergedAbonosList.push(sa);
+                // Fusionar abonos: el servidor es la fuente de verdad.
+                // Preservar receiptData del caché local y agregar solo pagos offline (abonoId === null).
+                const mergedAbonosList = [...serverAbonos];
+                // Preservar receiptData que solo existe localmente
+                for (const item of mergedAbonosList) {
+                    if (!item.receiptData) {
+                        const cached = localAbonos.find(l => l.abonoId === item.abonoId);
+                        if (cached?.receiptData) item.receiptData = cached.receiptData;
                     }
                 }
+                // Agregar únicamente pagos offline que aún no se han sincronizado (sin abonoId)
+                for (const local of localAbonos) {
+                    if (local.abonoId === null && !mergedAbonosList.some(m => m.id === local.id)) {
+                        mergedAbonosList.push(local);
+                    }
+                }
+                // Actualizar AsyncStorage para que coincida con la lista autorizada
+                AsyncStorage.setItem(getTodayAbonosKey(), JSON.stringify(mergedAbonosList)).catch(e =>
+                    console.error('[STORAGE] Error actualizando abonos individuales:', e)
+                );
                 setTodayPayments(mergedAbonosList);
 
                 // Cargar también cobrados guardados en almacenamiento local del teléfono hoy
@@ -346,21 +353,21 @@ export default function CreditsScreen() {
                     console.error('[STORAGE] Error leyendo cobrados hoy:', e);
                 }
 
-                setPortfolio(prev => {
+                setPortfolio(() => {
                     const mergedPaid = [...classifiedPaidToday];
-                    // Agregar los de AsyncStorage
+                    // Agregar solo pagos offline del caché local (sin abonoId = no sincronizados aún)
                     for (const item of localSavedPaid) {
-                        if (!mergedPaid.some(m => m.id === item.id)) {
+                        const isOfflineOnly = !serverAbonos.some(sa => sa.creditId === item.id);
+                        if (isOfflineOnly && !mergedPaid.some(m => m.id === item.id)) {
                             mergedPaid.push(item);
                         }
                     }
-                    // Agregar los del estado previo
-                    for (const localPaid of prev.paidToday) {
-                        if (!mergedPaid.some(m => m.id === localPaid.id)) {
-                            mergedPaid.push(localPaid);
-                        }
-                    }
+                    // NO mezclar prev.paidToday: el servidor es la fuente de verdad
                     mergedPaid.sort((a, b) => a.clientName.localeCompare(b.clientName));
+                    // Sincronizar AsyncStorage con la lista autorizada
+                    AsyncStorage.setItem(getTodayKey(), JSON.stringify(mergedPaid)).catch(e =>
+                        console.error('[STORAGE] Error actualizando cobrados hoy:', e)
+                    );
                     return {
                         dueToday,
                         overdue,
