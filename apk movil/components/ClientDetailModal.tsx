@@ -20,7 +20,7 @@ interface ClientDetailModalProps {
     onReprintReceipt?: (payment: any, credit: any) => void;
 }
 
-type TabType = 'estado' | 'consolidado' | 'financiero';
+type TabType = 'estado' | 'financiero';
 
 const fmt = (n: any) => Number(n || 0).toLocaleString('es-NI', { 
     minimumFractionDigits: 2, 
@@ -142,12 +142,6 @@ export default function ClientDetailModal({
                             label="ESTADO CUENTA" 
                             icon="file-document-outline"
                             onPress={() => setActiveTab('estado')} 
-                        />
-                        <ReportTab 
-                            active={activeTab === 'consolidado'} 
-                            label="CONSOLIDADO" 
-                            icon="account-group-outline"
-                            onPress={() => setActiveTab('consolidado')} 
                         />
                         <ReportTab 
                             active={activeTab === 'financiero'} 
@@ -406,172 +400,104 @@ export default function ClientDetailModal({
                             </View>
                         )}
 
-                        {/* ─── TAB: CONSOLIDADO (HISTORIAL GENERAL DEL CLIENTE) ─── */}
-                        {activeTab === 'consolidado' && (
-                            <View style={styles.consolidatedView}>
-                                <Text style={styles.tableTitle}>Resumen Global</Text>
-                                <View style={styles.statsCard}>
-                                    <StatRow 
-                                        label="CRÉDITO PROMEDIO:" 
-                                        value={`${moneda} ${fmt(credit.summary?.averageAmount || credit.totalAmount)}`} 
-                                    />
-                                    <StatRow 
-                                        label="CANTIDAD DE CRÉDITOS:" 
-                                        value={`${credit.summary?.totalCredits || 1}`} 
-                                    />
-                                    <StatRow 
-                                        label="CÓDIGO DEL CLIENTE:" 
-                                        value={credit.clientCode || 'N/A'} 
-                                    />
-                                    <StatRow 
-                                        label="ACTIVIDAD ECONÓMICA:" 
-                                        value={credit.summary?.economicActivity || 'No especificada'} 
-                                    />
-                                    <StatRow 
-                                        label="PROMEDIO CRÉDITO ACTUAL:" 
-                                        value={`${Number(details.avgLateDaysCredit || promedioAtraso || 0).toFixed(2)} días`} 
-                                    />
-                                    <StatRow 
-                                        label="PROMEDIO GLOBAL:" 
-                                        value={`${Number(credit.summary?.globalAverageLateDays || details.avgLateDaysGlobal || promedioAtraso || 0).toFixed(2)} días`} 
-                                    />
-                                </View>
-
-                                <Text style={[styles.tableTitle, { marginTop: 20 }]}>Historial de Préstamos</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 10 }}>
-                                    <View>
-                                        <View style={styles.tableHeaderWide}>
-                                            <Text style={[styles.cellTextWide, { width: 85 }, styles.textBold]}>Crédito #</Text>
-                                            <Text style={[styles.cellTextWide, { width: 95 }, styles.textBold]}>Monto</Text>
-                                            <Text style={[styles.cellTextWide, { width: 65 }, styles.textBold]}>Tasa</Text>
-                                            <Text style={[styles.cellTextWide, { width: 55 }, styles.textBold]}>Plazo</Text>
-                                            <Text style={[styles.cellTextWide, { width: 90 }, styles.textBold]}>Apertura</Text>
-                                            <Text style={[styles.cellTextWide, { width: 90 }, styles.textBold]}>Vencimiento</Text>
-                                            <Text style={[styles.cellTextWide, { width: 75 }, styles.textBold]}>Días Atraso</Text>
-                                        </View>
-                                        {(credit.history || []).length > 0 ? (
-                                            credit.history.map((hist: any, hIdx: number) => (
-                                                <View key={hIdx} style={[styles.tableRowWide, hIdx % 2 === 1 && styles.webTableRowEven]}>
-                                                    <Text style={[styles.cellTextWide, { width: 85, fontWeight: '700' }]}>
-                                                        #{hist.creditNumber || hist.id}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 95 }]}>
-                                                        {moneda} {fmt(hist.amount || hist.monto)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 65 }]}>
-                                                        {Number(hist.interestRate || hist.tasa || 0).toFixed(2)}%
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 55 }]}>
-                                                        {hist.termMonths || hist.plazo || 1}m
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 90 }]}>
-                                                        {formatDate(hist.deliveryDate || hist.fecha_desembolso)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 90 }]}>
-                                                        {formatDate(hist.dueDate || hist.fecha_vencimiento)}
-                                                    </Text>
-                                                    <Text style={[
-                                                        styles.cellTextWide, 
-                                                        { width: 75, fontWeight: '700', color: Number(hist.avgLateDays || 0) > 1 ? '#dc2626' : '#16a34a' }
-                                                    ]}>
-                                                        {Number(hist.avgLateDays || 0).toFixed(2)}
-                                                    </Text>
-                                                </View>
-                                            ))
-                                        ) : (
-                                            <View style={[styles.tableRowWide, { paddingVertical: 15 }]}>
-                                                <Text style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                                                    Solo crédito actual registrado (#{credit.creditNumber})
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                </ScrollView>
-                            </View>
-                        )}
-
-                        {/* ─── TAB: PLAN DETALLADO FINANCIERO (CON CAPITAL, INTERÉS, SALDOS Y MORA) ─── */}
+                        {/* ─── TAB: PLAN DETALLADO (# , FECHA, CUOTA, PAGADO, SALDO, ESTADO: PG / PN) ─── */}
                         {activeTab === 'financiero' && (
                             <View>
-                                <Text style={styles.tableTitle}>Plan de Pagos Completo (Auditoría Financiera)</Text>
+                                <View style={styles.planDetalladoHeaderRow}>
+                                    <Text style={styles.tableTitle}>Plan de Pagos Detallado</Text>
+                                    <View style={styles.statusLegend}>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.statusBadgeMin, { backgroundColor: '#dcfce7', borderColor: '#86efac' }]}>
+                                                <Text style={[styles.statusBadgeMinText, { color: '#15803d' }]}>PG</Text>
+                                            </View>
+                                            <Text style={styles.legendLabel}>Pagado</Text>
+                                        </View>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.statusBadgeMin, { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }]}>
+                                                <Text style={[styles.statusBadgeMinText, { color: '#dc2626' }]}>PN</Text>
+                                            </View>
+                                            <Text style={styles.legendLabel}>Pendiente</Text>
+                                        </View>
+                                    </View>
+                                </View>
                                 <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 15 }}>
                                     <View>
                                         <View style={styles.tableHeaderWide}>
-                                            <Text style={[styles.cellTextWide, { width: 35 }, styles.textBold]}>#</Text>
-                                            <Text style={[styles.cellTextWide, { width: 85 }, styles.textBold]}>Fecha</Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right' }, styles.textBold]}>Capital</Text>
-                                            <Text style={[styles.cellTextWide, { width: 75, textAlign: 'right' }, styles.textBold]}>Interés</Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right' }, styles.textBold]}>Cuota</Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right' }, styles.textBold]}>Pagado</Text>
-                                            <Text style={[styles.cellTextWide, { width: 85, textAlign: 'right' }, styles.textBold]}>Saldo</Text>
-                                            <Text style={[styles.cellTextWide, { width: 75, textAlign: 'center' }, styles.textBold]}>Estado</Text>
+                                            <Text style={[styles.cellTextWide, { width: 36, textAlign: 'center' }, styles.textBold]}>#</Text>
+                                            <Text style={[styles.cellTextWide, { width: 88, textAlign: 'center' }, styles.textBold]}>Fecha</Text>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right' }, styles.textBold]}>Cuota</Text>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right' }, styles.textBold]}>Pagado</Text>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right' }, styles.textBold]}>Saldo</Text>
+                                            <Text style={[styles.cellTextWide, { width: 56, textAlign: 'center' }, styles.textBold]}>Estado</Text>
                                         </View>
-
-                                        {installments.map((item: any, idx: number) => {
-                                            const itemDate = item.fecha_cuota || item.paymentDate || item.dueDate || item.date;
-                                            const itemStatus = item.status || (item.estado === 3 ? 'PAGADA' : (item.estado === 2 ? 'PARCIAL' : 'PENDIENTE'));
-
-                                            return (
-                                                <View 
-                                                    key={idx} 
-                                                    style={[
-                                                        styles.tableRowWide, 
-                                                        idx % 2 === 1 && styles.webTableRowEven,
-                                                        itemStatus === 'PAGADA' && styles.rowPaidSoft
-                                                    ]}
-                                                >
-                                                    <Text style={[styles.cellTextWide, { width: 35, textAlign: 'center', fontWeight: '700' }]}>
-                                                        {item.numero_cuota || item.paymentNumber || idx + 1}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 85, textAlign: 'center' }]}>
-                                                        {formatDate(itemDate)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right' }]}>
-                                                        {fmt(item.capital ?? item.principal ?? 0)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 75, textAlign: 'right' }]}>
-                                                        {fmt(item.interes ?? item.interest ?? 0)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right', fontWeight: '700', color: '#0284c7' }]}>
-                                                        {fmt(item.monto_cuota ?? item.quota ?? item.amount ?? 0)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right', color: '#16a34a', fontWeight: '600' }]}>
-                                                        {fmt(item.pagado ?? item.paid ?? 0)}
-                                                    </Text>
-                                                    <Text style={[styles.cellTextWide, { width: 85, textAlign: 'right', fontWeight: '600' }]}>
-                                                        {fmt(item.saldo ?? item.balance ?? 0)}
-                                                    </Text>
-                                                    <View style={{ width: 75, alignItems: 'center' }}>
-                                                        <Text style={[
-                                                            { fontSize: 10, fontWeight: '800' },
-                                                            itemStatus === 'PAGADA' ? { color: '#16a34a' } : itemStatus === 'PARCIAL' ? { color: '#ea580c' } : { color: '#dc2626' }
-                                                        ]}>
-                                                            {itemStatus}
+                                        {installments.length > 0 ? (
+                                            installments.map((item: any, idx: number) => {
+                                                const itemDate = item.fecha_cuota || item.paymentDate || item.dueDate || item.date;
+                                                const saldoNum = Number(item.saldo ?? item.balance ?? 0);
+                                                const cuotaNum = Number(item.monto_cuota ?? item.quota ?? item.amount ?? 0);
+                                                const isPaid = item.estado === 3 || 
+                                                               item.status === 'PAGADA' || 
+                                                               (saldoNum <= 0.01 && cuotaNum > 0);
+                                                return (
+                                                    <View 
+                                                        key={idx} 
+                                                        style={[
+                                                            styles.tableRowWide, 
+                                                            idx % 2 === 1 && styles.webTableRowEven,
+                                                            isPaid && styles.rowPaidSoft
+                                                        ]}
+                                                    >
+                                                        <Text style={[styles.cellTextWide, { width: 36, textAlign: 'center', fontWeight: '700' }]}>
+                                                            {item.numero_cuota || item.paymentNumber || idx + 1}
                                                         </Text>
+                                                        <Text style={[styles.cellTextWide, { width: 88, textAlign: 'center' }]}>
+                                                            {formatDate(itemDate)}
+                                                        </Text>
+                                                        <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', fontWeight: '700', color: '#0284c7' }]}>
+                                                            {fmt(cuotaNum)}
+                                                        </Text>
+                                                        <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', color: '#16a34a', fontWeight: '600' }]}>
+                                                            {fmt(item.pagado ?? item.paid ?? 0)}
+                                                        </Text>
+                                                        <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', fontWeight: '600' }]}>
+                                                            {fmt(saldoNum)}
+                                                        </Text>
+                                                        <View style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}>
+                                                            <View style={[
+                                                                styles.statusBadgeMin,
+                                                                isPaid ? { backgroundColor: '#dcfce7', borderColor: '#86efac' } : { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }
+                                                            ]}>
+                                                                <Text style={[
+                                                                    styles.statusBadgeMinText,
+                                                                    isPaid ? { color: '#15803d' } : { color: '#dc2626' }
+                                                                ]}>
+                                                                    {isPaid ? 'PG' : 'PN'}
+                                                                </Text>
+                                                            </View>
+                                                        </View>
                                                     </View>
-                                                </View>
-                                            );
-                                        })}
-
+                                                );
+                                            })
+                                        ) : (
+                                            <View style={[styles.tableRowWide, { paddingVertical: 15, width: 432 }]}>
+                                                <Text style={{ color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', width: '100%' }}>
+                                                    No hay cuotas registradas para este crédito.
+                                                </Text>
+                                            </View>
+                                        )}
                                         {/* Totales pie financiero */}
                                         <View style={[styles.tableRowWide, styles.tableFooterWide]}>
-                                            <Text style={[styles.cellTextWide, { width: 120, fontWeight: '800' }]}>Totales</Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right', fontWeight: '800' }]}>
-                                                {fmt(fullStatement.totals?.plan?.capital)}
-                                            </Text>
-                                            <Text style={[styles.cellTextWide, { width: 75, textAlign: 'right', fontWeight: '800' }]}>
-                                                {fmt(fullStatement.totals?.plan?.interes)}
-                                            </Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right', fontWeight: '800', color: '#0284c7' }]}>
+                                            <Text style={[styles.cellTextWide, { width: 124, textAlign: 'center', fontWeight: '800' }]}>Totales</Text>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', fontWeight: '800', color: '#0284c7' }]}>
                                                 {fmt(fullStatement.totals?.plan?.cuota)}
                                             </Text>
-                                            <Text style={[styles.cellTextWide, { width: 80, textAlign: 'right', fontWeight: '800', color: '#16a34a' }]}>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', fontWeight: '800', color: '#16a34a' }]}>
                                                 {fmt(fullStatement.totals?.plan?.pagado)}
                                             </Text>
-                                            <Text style={[styles.cellTextWide, { width: 85, textAlign: 'right', fontWeight: '800' }]}>
+                                            <Text style={[styles.cellTextWide, { width: 84, textAlign: 'right', fontWeight: '800' }]}>
                                                 {fmt(fullStatement.totals?.plan?.saldo)}
                                             </Text>
-                                            <View style={{ width: 75 }} />
+                                            <View style={{ width: 56 }} />
                                         </View>
                                     </View>
                                 </ScrollView>
@@ -597,14 +523,7 @@ export default function ClientDetailModal({
     );
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
-    return (
-        <View style={styles.statRow}>
-            <Text style={styles.statLabel}>{label}</Text>
-            <Text style={styles.statValue}>{value}</Text>
-        </View>
-    );
-}
+
 
 function ReportTab({ active, label, icon, onPress }: { active: boolean; label: string; icon: any; onPress: () => void }) {
     return (
@@ -1048,9 +967,39 @@ const styles = StyleSheet.create({
         fontWeight: '800'
     },
 
-    // Tab Consolidado
-    consolidatedView: {
-        gap: 12
+    // Estilos Plan Detallado
+    planDetalladoHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    statusLegend: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    legendLabel: {
+        fontSize: 10.5,
+        fontWeight: '600',
+        color: '#64748b',
+    },
+    statusBadgeMin: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statusBadgeMinText: {
+        fontSize: 10.5,
+        fontWeight: '900',
     },
     tableTitle: { 
         fontSize: 13, 
@@ -1060,32 +1009,6 @@ const styles = StyleSheet.create({
         borderLeftColor: '#0284c7', 
         paddingLeft: 8,
         marginBottom: 8
-    },
-    statsCard: { 
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: Platform.OS === "android" ? 34 : 20, 
-        borderRadius: 8, 
-        backgroundColor: '#f8fafc', 
-        borderWidth: 1, 
-        borderColor: '#e2e8f0' 
-    },
-    statRow: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        paddingVertical: 5, 
-        borderBottomWidth: 0.5, 
-        borderBottomColor: '#e2e8f0' 
-    },
-    statLabel: { 
-        fontSize: 11, 
-        fontWeight: '700', 
-        color: '#64748b' 
-    },
-    statValue: { 
-        fontSize: 11, 
-        fontWeight: '800', 
-        color: '#0f172a' 
     },
 
     tableHeaderWide: { 
