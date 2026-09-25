@@ -1,32 +1,31 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { checkConnection, fullSync, getLastSyncDate } from '../services/sync-service';
 import { getOfflineStats } from '../services/offline-db';
 
 export default function SyncIndicator() {
-    const [isOnline, setIsOnline] = useState(true);
+    const [isOnline, setIsOnline] = useState<boolean | null>(null); // null = aún no verificado
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const [pendingItems, setPendingItems] = useState(0);
+    const prevOnline = useRef<boolean | null>(null);
 
     useEffect(() => {
         loadSyncInfo();
-        
-        // Sincronización manual ahora es la norma para mayor estabilidad
-        // const interval = setInterval(checkConnectionStatus, 30000);
-        // return () => clearInterval(interval);
         checkConnectionStatus();
     }, []);
 
     const checkConnectionStatus = async () => {
         const online = await checkConnection();
-        setIsOnline(online);
-        
-        // Si recupera conexión, sincronizar automáticamente
-        if (online && !isOnline && pendingItems > 0) {
+
+        // Detectar transición offline → online con items pendientes
+        if (prevOnline.current === false && online && pendingItems > 0) {
             handleSync();
         }
+
+        prevOnline.current = online;
+        setIsOnline(online);
     };
 
     const loadSyncInfo = async () => {
@@ -76,12 +75,12 @@ export default function SyncIndicator() {
             <View style={styles.statusRow}>
                 <View style={styles.statusInfo}>
                     <MaterialCommunityIcons 
-                        name={isOnline ? "wifi" : "wifi-off"} 
+                        name={isOnline === true ? "wifi" : isOnline === false ? "wifi-off" : "wifi-sync"} 
                         size={16} 
-                        color={isOnline ? "#10b981" : "#ef4444"} 
+                        color={isOnline === true ? "#10b981" : isOnline === false ? "#ef4444" : "#94a3b8"} 
                     />
                     <Text style={styles.statusText}>
-                        {isOnline ? 'En línea' : 'Sin conexión'}
+                        {isOnline === true ? 'En línea' : isOnline === false ? 'Sin conexión' : 'Verificando...'}
                     </Text>
                     {pendingItems > 0 && (
                         <View style={styles.badge}>
@@ -90,7 +89,7 @@ export default function SyncIndicator() {
                     )}
                 </View>
 
-                {isOnline && (
+                {isOnline === true && (
                     <TouchableOpacity 
                         style={styles.syncButton}
                         onPress={handleSync}

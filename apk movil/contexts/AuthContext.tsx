@@ -1,8 +1,30 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sessionService, UserSession } from '../services/session';
 import { router } from 'expo-router';
-import { fullSync } from '../services/sync-service'; // Asumiendo que esta ruta es correcta
-import { clearOfflineDatabase } from '../services/offline-db'; // Importar la nueva función
+import { fullSync, checkConnection } from '../services/sync-service';
+import { clearOfflineDatabase } from '../services/offline-db';
+
+// Keys de AsyncStorage relacionadas con datos del día del agente
+// Se limpian al hacer logout para que no contamine la siguiente sesión
+const COBRADOS_HOY_PREFIX   = '@credinic_cobrados_hoy_';
+const ABONOS_HOY_PREFIX     = '@credinic_abonos_individuales_';
+
+const clearDailyAsyncStorageCache = async () => {
+    try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const keysToRemove = allKeys.filter(
+            k => k.startsWith(COBRADOS_HOY_PREFIX) || k.startsWith(ABONOS_HOY_PREFIX)
+        );
+        if (keysToRemove.length > 0) {
+            await AsyncStorage.multiRemove(keysToRemove);
+            console.log('[AUTH] Cache diario limpiado:', keysToRemove.length, 'keys eliminadas');
+        }
+    } catch (error) {
+        console.error('[AUTH] Error limpiando cache diario:', error);
+    }
+};
 
 interface AuthContextType {
     user: UserSession | null;
@@ -19,10 +41,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+    // Control de auto-sync por AppState
+    const appState      = useRef<AppStateStatus>(AppState.currentState);
+    const wasSyncing    = useRef(false);
+
     useEffect(() => {
         loadSession();
         setupAutoLogout();
     }, []);
+
+    // Auto-sync: se dispara cuando la app vuelve al primer plano Y hay conexión
+    useEffect(() => {
+        if (!user) return; // Solo si hay sesión activa
+
+        const subscription = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
+            const comingToForeground =
+                appState.current.match(/inactive|background/) && nextState === 'active';
+
+            appState.current = nextState;
+
+            if (comingToForeground && !wasSyncing.current) {
+                wasSyncing.current = true;
+                try {
+                    const online = await checkConnection();
+                    if (online) {
+                        console.log('[AUTH] App al frente con conexión — sincronizando...');
+                        await fullSync();
+                    }
+                } catch (e) {
+                    console.error('[AUTH] Error en auto-sync al volver al frente:', e);
+                } finally {
+                    wasSyncing.current = false;
+                }
+            }
+        });
+
+        return () => subscription.remove();
+    }, [user]);
 
     const loadSession = async () => {
         try {
@@ -78,9 +133,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setIsLoggingOut(true);
         try {
-            // 1. Limpiar almacenamiento persistente de la sesión y DB local primero
+            // 1. Limpiar sesión, DB offline y cache diario del AsyncStorage
             await sessionService.clearSession();
             await clearOfflineDatabase();
+            await clearDailyAsyncStorageCache();
             
             // 2. Limpiar el estado de usuario
             setUser(null);

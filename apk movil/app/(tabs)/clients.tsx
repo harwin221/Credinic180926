@@ -115,7 +115,23 @@ export default function ClientsScreen() {
         try {
             const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/mis-clientes?buscar=${encodeURIComponent(searchTerm)}`);
             const result = await resp.json();
-            if (result.success) setData(result.data);
+            if (result.success) {
+                    // Filtrar en cliente del lado de la APK:
+                    // Solo mostrar clientes que tengan al menos un crédito ACTIVO con este gestor.
+                    // El servidor puede devolver clientes con créditos históricos (cancelados/vencidos)
+                    // que en su momento fueron de este gestor pero ya fueron reasignados.
+                    const allFiltered = (result.data.all || []).filter(
+                        (c: any) => (c.activeCredits ?? 0) > 0
+                    );
+                    const reloanFiltered = (result.data.reloan || []).filter(
+                        (c: any) => (c.activeCredits ?? 0) > 0
+                    );
+                    setData({
+                        all: allFiltered,
+                        reloan: reloanFiltered,
+                        renewal: result.data.renewal || [],
+                    });
+                }
         } catch (e) {
             console.error('Error fetching clients:', e);
         } finally {
