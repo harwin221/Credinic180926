@@ -181,13 +181,15 @@ class ThermalPrinterService {
             receiptText += center('C$ ' + fmt(receipt.amountPaid)) + '\n';
             receiptText += '\n';
 
-            // Solo mostrar concepto si es cancelación
             const isCancel = (receipt as any).is_cancelacion ||
                 ((receipt as any).concepto && (receipt as any).concepto.includes('CANCEL')) ||
                 (receipt.nuevoSaldo === 0 && (receipt.saldoAnterior || 0) > 0);
 
+            // Concepto — siempre visible igual que el recibo web
             if (isCancel) {
                 receiptText += center('CONCEPTO: CANCELACION DE CREDITO') + '\n';
+            } else {
+                receiptText += center('CONCEPTO: ABONO DE CREDITO') + '\n';
             }
 
             receiptText += separator + '\n';

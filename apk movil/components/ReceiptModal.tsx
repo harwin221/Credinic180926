@@ -128,11 +128,17 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
                                 <Text style={styles.totalAmount}>C$ {fmt(receipt.amountPaid)}</Text>
                             </View>
 
-                            {/* Cancelación badge solo si aplica — sin concepto abono */}
-                            {isCancel && (
+                            {/* Concepto — siempre visible igual que el recibo web */}
+                            {isCancel ? (
                                 <View style={styles.conceptBadgeCancelacion}>
                                     <Text style={styles.conceptCancelacion}>
                                         CONCEPTO: CANCELACIÓN DE CRÉDITO
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={styles.conceptBadgeAbono}>
+                                    <Text style={styles.conceptAbono}>
+                                        CONCEPTO: ABONO DE CRÉDITO
                                     </Text>
                                 </View>
                             )}
@@ -331,6 +337,19 @@ const styles = StyleSheet.create({
         color: '#15803d',
         fontWeight: '900',
         fontSize: 11,
+        textAlign: 'center',
+    },
+    conceptBadgeAbono: {
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        marginBottom: 8,
+        alignSelf: 'center',
+    },
+    conceptAbono: {
+        color: '#475569',
+        fontWeight: '600',
+        fontSize: 12,
+        fontStyle: 'italic',
         textAlign: 'center',
     },
     balanceBox: {
