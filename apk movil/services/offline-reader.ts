@@ -105,7 +105,9 @@ export const getClienteDetalleOffline = async (clientId: string | number): Promi
         const c = clientes.find((x: any) => String(x.id) === id);
         if (!c) return null;
 
-        const misAbonos = abonos.filter((a: any) => String(a.creditId) === id || !a.creditId);
+        // getOfflineAbonos ya filtró por clientId en SQL; NO volver a filtrar
+        // por creditId contra el id del cliente (id ≠ creditId y vaciaba el historial).
+        const misAbonos = abonos;
 
         const credits = creditos.map((cr: any) => {
             const plan = cr.paymentPlan || [];
