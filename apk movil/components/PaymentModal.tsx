@@ -37,6 +37,51 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
     const detail = credit.details || {};
     const totalAPagar = (detail.dueTodayAmount || 0) + (detail.overdueAmount || 0);
 
+    /**
+     * Restante de la cuota pendiente más próxima.
+     *
+     * El backend calcula `cuotaDelDia` solo con cuotas cuya fecha es EXACTAMENTE
+     * el día del abono, así que cuando el cliente paga antes de la fecha de su
+     * cuota ese valor llega en 0 y el gestor no sabe cuánto le falta para
+     * completarla. Aquí lo calculamos en el cliente, solo como información
+     * visual: no altera el total oficial ni el pago.
+     */
+    const getRestanteCuotaProxima = (): { monto: number; numero: number | null; fecha: string | null } => {
+        const fuente: any[] = credit.cuotas || credit.filas || credit.paymentPlan || [];
+        if (!Array.isArray(fuente) || fuente.length === 0) {
+            return { monto: 0, numero: null, fecha: null };
+        }
+
+        const normalizar = (c: any) => {
+            const pagada = c.estado === 3 || c.pagada === true || c.status === 'PAGADA';
+            const fecha = String(c.fecha_cuota ?? c.fecha ?? c.paymentDate ?? '').slice(0, 10);
+            const monto = parseFloat(
+                c.monto_pendiente_cuota ?? c.pendiente ?? c.balance ?? c.amount ?? 0
+            ) || 0;
+            return { pagada, fecha, monto, numero: c.numero_cuota ?? c.numero ?? c.paymentNumber ?? null };
+        };
+
+        const pendientes = fuente.map(normalizar).filter((c) => !c.pagada);
+
+        if (pendientes.length === 0) {
+            return { monto: 0, numero: null, fecha: null };
+        }
+
+        // La más antigua con saldo: es la que el cliente está completando.
+        pendientes.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+        const primera = pendientes[0];
+
+        // Si la cuota no vence hoy pero ya tiene pagos parciales, el restante
+        // sigue siendo el saldo pendiente real de esa cuota.
+        return {
+            monto: Math.max(0, primera.monto),
+            numero: primera.numero,
+            fecha: primera.fecha || null,
+        };
+    };
+
+    const restanteCuota = getRestanteCuotaProxima();
+
     const handlePay = async () => {
         if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
             alert('Por favor ingresa un monto válido');
@@ -65,23 +110,23 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                     const paymentId = `OFFLINE-${Date.now()}`;
                     const paymentAmount = Number(amount);
                     const paymentNotes = notes || '';
-                    
+
                     const paymentData = {
                         amount: paymentAmount,
                         paymentDate: new Date().toISOString(),
                         notes: paymentNotes,
                         paymentType,
                     };
-                    
+
                     // Guardar en base de datos offline
                     await savePendingPayment(credit.id, paymentData, session.id, paymentId);
-                    
+
                     // Cerrar el modal primero
                     setAmount('');
                     setNotes('');
                     setLoading(false);
                     onClose();
-                    
+
                     // Luego disparar el flujo de recibo con datos locales
                     setTimeout(async () => {
                         try {
@@ -97,7 +142,7 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                             alert('Pago guardado pero hubo un error al mostrar el recibo');
                         }
                     }, 300);
-                    
+
                     return;
                 } catch (offlineError) {
                     console.error('[PAYMENT_MODAL] Error en modo offline:', offlineError);
@@ -147,10 +192,10 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                         </View>
 
                         <View style={styles.statusRow}>
-                            <MaterialCommunityIcons 
-                                name={isOnline ? "wifi" : "wifi-off"} 
-                                size={16} 
-                                color={isOnline ? "#10b981" : "#f97316"} 
+                            <MaterialCommunityIcons
+                                name={isOnline ? "wifi" : "wifi-off"}
+                                size={16}
+                                color={isOnline ? "#10b981" : "#f97316"}
                             />
                             <Text style={[styles.statusText, !isOnline && { color: '#f97316', fontWeight: '700' }]}>
                                 {isOnline ? 'Conectado' : 'MODO OFFLINE - El pago se guardará localmente'}
@@ -190,6 +235,25 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                                     <Text style={styles.metricLabel}>Monto para Cancelar:</Text>
                                     <Text style={[styles.metricValue, { color: '#2563eb', fontWeight: '600' }]}>C$ {Number(detail.remainingBalance || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                 </View>
+
+                                {/* Information-only: no altera el total oficial. */}
+                                {restanteCuota.monto > 0 && (
+                                    <>
+                                        <View style={styles.metricRow}>
+                                            <Text style={styles.metricLabel}>
+                                                {`Falta para cuota #${restanteCuota.numero ?? ''}:`}
+                                            </Text>
+                                            <Text style={[styles.metricValue, { color: '#0ea5e9', fontWeight: '800' }]}>
+                                                C$ {restanteCuota.monto.toLocaleString('es-NI', { minimumFractionDigits: 2 })}
+                                            </Text>
+                                        </View>
+                                        {restanteCuota.fecha && (
+                                            <Text style={styles.helperText}>
+                                                {`Vence el ${restanteCuota.fecha.split('-').reverse().join('/')}`}
+                                            </Text>
+                                        )}
+                                    </>
+                                )}
                             </View>
 
                             {/* Inputs */}
@@ -231,10 +295,10 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                                     <ActivityIndicator color="#fff" size="small" />
                                 ) : (
                                     <>
-                                        <MaterialCommunityIcons 
-                                            name={isOnline ? "cash-check" : "content-save"} 
-                                            size={18} 
-                                            color="#fff" 
+                                        <MaterialCommunityIcons
+                                            name={isOnline ? "cash-check" : "content-save"}
+                                            size={18}
+                                            color="#fff"
                                         />
                                         <Text style={styles.payButtonText}>
                                             {isOnline ? 'PAGAR CUOTA' : 'GUARDAR PAGO'}
@@ -335,6 +399,13 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
         color: '#334155',
+    },
+    helperText: {
+        fontSize: 10,
+        color: '#94a3b8',
+        textAlign: 'right',
+        marginTop: -4,
+        marginBottom: 6,
     },
     divider: {
         height: 1,

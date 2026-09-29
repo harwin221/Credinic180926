@@ -138,7 +138,7 @@ export const getClienteDetalleOffline = async (clientId: string | number): Promi
             });
 
             const paymentHistory = misAbonos
-                .filter((a: any) => String(a.creditId) === String(cr.id))
+                .filter((a: any) => !a.creditId || String(a.creditId) === String(cr.id))
                 .map((a: any) => ({
                     id:             a.abonoId,
                     abonoId:        a.abonoId,
@@ -172,6 +172,10 @@ export const getClienteDetalleOffline = async (clientId: string | number): Promi
                 totalCapital:      n(cr.totalCapital),
                 totalInteres:      n(cr.totalInteres),
                 paymentFrequency:  cr.paymentFrequency || '',
+                // Se reenvían tal cual: la pantalla de detalle los usa para
+                // pintar tasas, términos y filas del crédito.
+                details:           cr.details || {},
+                filas:             cr.filas || [],
                 paymentPlan,
                 paymentHistory,
             };
