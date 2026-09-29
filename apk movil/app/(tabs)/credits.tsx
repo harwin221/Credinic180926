@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
 import { apiFetch } from '../../config/apiFetch';
@@ -40,6 +40,13 @@ interface CreditItem {
     cuotaNumero: number;
     ultimoAbonoId?: number | null;
     promedio_atraso?: number;
+    // Próxima cuota con saldo parcial (solo informativo, no afecta lógica de cobro)
+    proximaCuotaPendiente?: {
+        numero: number;
+        fecha: string;
+        montoPendiente: number;
+        montoTotal: number;
+    } | null;
     // Montos calculados
     details: {
         dueTodayAmount: number;
@@ -127,6 +134,30 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
             )[0];
 
             const cobradoHoyMonto = parseFloat(prestamo.cobrado_hoy || 0);
+
+            // ── Próxima cuota con saldo parcial (solo informativo) ────────────
+            // Busca la primera cuota pendiente ordenada por fecha. Si tiene
+            // monto_pendiente_cuota < monto_cuota, el cliente ya abonó algo
+            // adelantado y mostramos cuánto falta para completarla.
+            let proximaCuotaPendiente: CreditItem['proximaCuotaPendiente'] = null;
+            const cuotasOrdenadas = [...cuotas]
+                .filter((c: any) => c.estado !== 3 && c.estado !== 4)
+                .sort((a: any, b: any) => a.fecha_cuota.localeCompare(b.fecha_cuota));
+            if (cuotasOrdenadas.length > 0) {
+                const proxCuota = cuotasOrdenadas[0];
+                const montoTotal    = parseFloat(proxCuota.monto_cuota) || 0;
+                const montoPendiente = parseFloat(proxCuota.monto_pendiente_cuota) ?? montoTotal;
+                // Solo la mostramos si hay saldo parcial (ya abonó algo adelantado)
+                if (montoPendiente > 0 && montoPendiente < montoTotal) {
+                    proximaCuotaPendiente = {
+                        numero:          proxCuota.numero_cuota,
+                        fecha:           proxCuota.fecha_cuota,
+                        montoPendiente,
+                        montoTotal,
+                    };
+                }
+            }
+
             const item: CreditItem = {
                 id:                  prestamo.id,
                 id_enc:              prestamo.id_enc,
@@ -137,9 +168,15 @@ function clasificarPortfolio(clientes: any[], hoy: string, agenteName: string) {
                 clientId:            cliente.id,
                 remainingBalance:    parseFloat(prestamo.pendiente_abono) || 0,
                 collectionsManager:  agenteName,
-                cuotaNumero:         cuotaHoyObj?.numero_cuota ?? cuotaVencObj?.numero_cuota ?? 0,
+                // cuotaHoyObj/cuotaVencObj pueden ser undefined para clientes "Al Día"
+                // En ese caso usamos la primera cuota pendiente ordenada por fecha
+                cuotaNumero:         cuotaHoyObj?.numero_cuota
+                                     ?? cuotaVencObj?.numero_cuota
+                                     ?? cuotasOrdenadas[0]?.numero_cuota
+                                     ?? 0,
                 ultimoAbonoId:       prestamo.ultimo_abono_id || null,
                 promedio_atraso:     parseFloat(prestamo.promedio_atraso) || 0,
+                proximaCuotaPendiente,
                 details: {
                     dueTodayAmount,
                     overdueAmount,
@@ -405,6 +442,28 @@ export default function CreditsScreen() {
     useFocusEffect(
         useCallback(() => {
             fetchPortfolio();
+            // Actualizar SQLite en background cada vez que el gestor abre
+            // la pestaña Créditos con conexión, sin bloquear la UI.
+            // IMPORTANTE: si hay pagos offline pendientes NO descargamos para
+            // evitar sobreescribir SQLite con datos del servidor que aún no
+            // incluyen esos pagos — el saldo se vería inconsistente.
+            import('../../services/sync-service').then(({ downloadOfflineData, checkConnection }) => {
+                checkConnection().then(online => {
+                    if (online) {
+                        import('../../services/offline-db').then(({ getPendingPayments }) => {
+                            getPendingPayments().then(pending => {
+                                if (pending.length === 0) {
+                                    downloadOfflineData()
+                                        .then(r => console.log('[CREDITS] Offline data actualizada:', r.message))
+                                        .catch(e => console.warn('[CREDITS] Error actualizando offline data:', e));
+                                } else {
+                                    console.log(`[CREDITS] ${pending.length} pagos offline pendientes — omitiendo descarga para preservar cola.`);
+                                }
+                            });
+                        });
+                    }
+                });
+            });
         }, [fetchPortfolio])
     );
 
@@ -562,6 +621,7 @@ export default function CreditsScreen() {
                     managedBy: session?.fullName || 'AGENTE',
                     sucursal: session?.sucursalName || 'SUCURSAL',
                     role: session?.role || 'AGENTE DE COBRO',
+                    cuotaPagadaNumero: null, // reimpresión: no tenemos datos suficientes para determinar esto
                 });
                 setIsReceiptVisible(true);
             }
@@ -577,6 +637,46 @@ export default function CreditsScreen() {
     const handleSelectCredit = (item: CreditItem) => {
         setSelectedCredit(item);
         setIsModalVisible(true);
+    };
+
+    /**
+     * Determina si el abono cubre completamente la cuota más próxima.
+     * Retorna el número de cuota si la cubrió al 100%, null si fue parcial.
+     *
+     * Casos:
+     * - Cliente con cuota hoy/vencida: totalAPagar > 0, se compara directo.
+     * - Cliente "Al Día" pagando adelantado: totalAPagar = 0, se usa
+     *   proximaCuotaPendiente.montoTotal como referencia. Si no existe
+     *   (primera vez que abona esa cuota), cualquier pago < montoTotal = parcial.
+     */
+    const calcCuotaPagadaNumero = (
+        credit: CreditItem,
+        amountPaid: number
+    ): number | null => {
+        const detail = credit.details;
+        const total  = detail.dueTodayAmount + detail.overdueAmount;
+        const num    = credit.cuotaNumero || 0;
+
+        // Caso normal: hay cuota hoy o en mora
+        if (total > 0) {
+            return amountPaid >= total - 0.01 && num > 0 ? num : null;
+        }
+
+        // Caso "Al Día": cliente pagando adelantado
+        // Si proximaCuotaPendiente existe, el cliente ya había abonado parcialmente
+        // y aún no completó esa cuota → siempre parcial mientras quede saldo
+        if (credit.proximaCuotaPendiente) {
+            const falta = credit.proximaCuotaPendiente.montoPendiente;
+            const numero = credit.proximaCuotaPendiente.numero || num;
+            return amountPaid >= falta - 0.01 && numero > 0 ? numero : null;
+        }
+
+        // Primera vez que abona esta cuota (sin historial parcial previo):
+        // necesitamos saber el monto completo de la cuota. Lo obtenemos de
+        // cuotaNumero y el dueTodayAmount que sería 0. No tenemos montoTotal
+        // directamente aquí, así que no podemos confirmar que es cuota completa.
+        // Retornamos null para no mostrar dato incorrecto.
+        return null;
     };
 
     // ─── Procesar pago ────────────────────────────────────────────────────────
@@ -608,6 +708,7 @@ export default function CreditsScreen() {
                 managedBy:         session.fullName,
                 sucursal:          session.sucursalName || 'SUCURSAL',
                 role:              session.role,
+                cuotaPagadaNumero: calcCuotaPagadaNumero(selectedCredit, paymentData.amount),
             };
             setReceiptData(offlineReceipt);
             setIsReceiptVisible(true);
@@ -680,6 +781,7 @@ export default function CreditsScreen() {
                     managedBy:        session.fullName,
                     sucursal:         session.sucursalName || 'SUCURSAL',
                     role:             session.role,
+                    cuotaPagadaNumero: calcCuotaPagadaNumero(selectedCredit, paymentData.amount),
                 });
                 setIsReceiptVisible(true);
 
@@ -703,6 +805,7 @@ export default function CreditsScreen() {
                     managedBy:        session.fullName,
                     sucursal:         session.sucursalName || 'SUCURSAL',
                     role:             session.role,
+                    cuotaPagadaNumero: calcCuotaPagadaNumero(selectedCredit, paymentData.amount),
                 };
 
                 const individualPayment: TodayPaymentItem = {
@@ -965,7 +1068,18 @@ export default function CreditsScreen() {
                                         index={index}
                                         onReprint={() => handleReprintPayment(payment)}
                                         onPayAgain={() => {
-                                            const cr = payment.creditItem || allItems.find(c => c.id === payment.creditId);
+                                            // Buscar el crédito fresco en toda la cartera
+                                            // (allItems solo tiene las 4 pestañas, no Cobrado Hoy)
+                                            const allPortfolioItems = [
+                                                ...portfolio.dueToday,
+                                                ...portfolio.overdue,
+                                                ...portfolio.expired,
+                                                ...portfolio.upToDate,
+                                                ...portfolio.paidToday,
+                                            ];
+                                            const cr = allPortfolioItems.find(c => c.id === payment.creditId)
+                                                    || payment.creditItem
+                                                    || allItems.find(c => c.id === payment.creditId);
                                             if (cr) {
                                                 handleSelectCredit(cr);
                                             } else {
@@ -980,6 +1094,7 @@ export default function CreditsScreen() {
                                                     remainingBalance: payment.saldoActual,
                                                     collectionsManager: '',
                                                     cuotaNumero: 0,
+                                                    proximaCuotaPendiente: null,
                                                     details: {
                                                         dueTodayAmount: 0,
                                                         overdueAmount: 0,
@@ -1045,7 +1160,12 @@ export default function CreditsScreen() {
             {/* ── Recibo ────────────────────────────────────────────────── */}
             <ReceiptModal
                 visible={isReceiptVisible}
-                onClose={() => setIsReceiptVisible(false)}
+                onClose={() => {
+                    setIsReceiptVisible(false);
+                    // Llevar al agente a Recaudado para que al regresar a
+                    // Créditos el useFocusEffect actualice SQLite y la lista.
+                    router.replace('/(tabs)/index' as any);
+                }}
                 receipt={receiptData}
             />
 

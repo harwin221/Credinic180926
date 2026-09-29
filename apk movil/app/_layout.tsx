@@ -1,23 +1,22 @@
 import { Stack, router, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { AlertProvider } from '../components/AlertProvider';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 
 function RootLayoutContent() {
   const { user, isLoading, isLoggingOut } = useAuth();
   const segments = useSegments() as string[];
-  // La pantalla de login es la raíz (index). segments[0] puede ser undefined
-  // durante el arranque, por eso se compara de forma segura.
-  const inAuthGroup = segments.length === 0 || segments[0] === 'index'; // La pantalla de login es la raíz (index)
+  const hasDownloadedRef = useRef(false);
+
+  const inAuthGroup = segments.length === 0 || segments[0] === 'index';
 
   useEffect(() => {
     if (!isLoading && !isLoggingOut) {
       if (!user && !inAuthGroup) {
-        // El usuario no está logueado y no está en el login, redirigir al login
+        hasDownloadedRef.current = false; // reset al hacer logout
         router.replace('/');
       } else if (user && inAuthGroup) {
-        // El usuario está logueado pero está en el Login, redirigir según su rol
         const roleUpper = user.role.toUpperCase();
         const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
         
@@ -31,6 +30,19 @@ function RootLayoutContent() {
       }
     }
   }, [user, isLoading, isLoggingOut, inAuthGroup]);
+
+  // Descarga offline en background al iniciar sesión (una sola vez por sesión)
+  useEffect(() => {
+    if (user && !isLoading && !hasDownloadedRef.current) {
+      hasDownloadedRef.current = true;
+      // No bloqueamos la UI — fire and forget
+      import('../services/sync-service').then(({ downloadOfflineData }) => {
+        downloadOfflineData()
+          .then(r => console.log('[LAYOUT] Descarga offline inicial:', r.message))
+          .catch(e => console.warn('[LAYOUT] Error descarga offline inicial:', e));
+      });
+    }
+  }, [user, isLoading]);
 
   if (isLoading || isLoggingOut) {
     return (

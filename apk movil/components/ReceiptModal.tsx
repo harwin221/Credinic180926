@@ -32,6 +32,8 @@ export interface ReceiptData {
     is_cancelacion?: boolean;
     tipo_abono?: number;
     is_reimpresion?: boolean;
+    // Número de cuota completamente cubierta por este abono (null = pago parcial, no se muestra)
+    cuotaPagadaNumero?: number | null;
 }
 
 const fmt = (n: number) => {
@@ -124,6 +126,11 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
                             <View style={styles.subDividerDotted} />
 
                             <Row label="Total a pagar:" value={`C$ ${fmt(receipt.totalAPagar)}`} bold />
+
+                            {/* Cuota cubierta — solo si el abono la completó al 100% */}
+                            {receipt.cuotaPagadaNumero != null && (
+                                <Row label="Cuota pagada:" value={`# ${receipt.cuotaPagadaNumero}`} bold />
+                            )}
 
                             <View style={styles.divider} />
 

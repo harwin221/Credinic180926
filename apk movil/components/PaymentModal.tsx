@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { savePendingPayment } from '../services/offline-db';
 import { checkConnection } from '../services/sync-service';
 import { sessionService } from '../services/session';
+import CustomAlert from './CustomAlert';
 
 interface PaymentModalProps {
     visible: boolean;
@@ -18,6 +19,16 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
     const [loading, setLoading] = useState(false);
     const [paymentType, setPaymentType] = useState('NORMAL');
     const [isOnline, setIsOnline] = useState(true);
+    const [customAlert, setCustomAlert] = useState<{
+        visible: boolean;
+        type: 'success' | 'error' | 'warning' | 'info';
+        title: string;
+        message: string;
+    }>({ visible: false, type: 'warning', title: '', message: '' });
+
+    const showAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+        setCustomAlert({ visible: true, type, title, message });
+    };
 
     useEffect(() => {
         const checkConnectionStatus = async () => {
@@ -37,61 +48,25 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
     const detail = credit.details || {};
     const totalAPagar = (detail.dueTodayAmount || 0) + (detail.overdueAmount || 0);
 
-    /**
-     * Restante de la cuota pendiente más próxima.
-     *
-     * El backend calcula `cuotaDelDia` solo con cuotas cuya fecha es EXACTAMENTE
-     * el día del abono, así que cuando el cliente paga antes de la fecha de su
-     * cuota ese valor llega en 0 y el gestor no sabe cuánto le falta para
-     * completarla. Aquí lo calculamos en el cliente, solo como información
-     * visual: no altera el total oficial ni el pago.
-     */
-    const getRestanteCuotaProxima = (): { monto: number; numero: number | null; fecha: string | null } => {
-        const fuente: any[] = credit.cuotas || credit.filas || credit.paymentPlan || [];
-        if (!Array.isArray(fuente) || fuente.length === 0) {
-            return { monto: 0, numero: null, fecha: null };
-        }
+    // Próxima cuota con abono parcial adelantado (viene calculada desde credits.tsx)
+    const proxCuota = credit.proximaCuotaPendiente ?? null;
 
-        const normalizar = (c: any) => {
-            const pagada = c.estado === 3 || c.pagada === true || c.status === 'PAGADA';
-            const fecha = String(c.fecha_cuota ?? c.fecha ?? c.paymentDate ?? '').slice(0, 10);
-            const monto = parseFloat(
-                c.monto_pendiente_cuota ?? c.pendiente ?? c.balance ?? c.amount ?? 0
-            ) || 0;
-            return { pagada, fecha, monto, numero: c.numero_cuota ?? c.numero ?? c.paymentNumber ?? null };
-        };
 
-        const pendientes = fuente.map(normalizar).filter((c) => !c.pagada);
-
-        if (pendientes.length === 0) {
-            return { monto: 0, numero: null, fecha: null };
-        }
-
-        // La más antigua con saldo: es la que el cliente está completando.
-        pendientes.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
-        const primera = pendientes[0];
-
-        // Si la cuota no vence hoy pero ya tiene pagos parciales, el restante
-        // sigue siendo el saldo pendiente real de esa cuota.
-        return {
-            monto: Math.max(0, primera.monto),
-            numero: primera.numero,
-            fecha: primera.fecha || null,
-        };
-    };
-
-    const restanteCuota = getRestanteCuotaProxima();
 
     const handlePay = async () => {
         if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-            alert('Por favor ingresa un monto válido');
+            showAlert('warning', 'Monto inválido', 'Por favor ingresa un monto válido.');
             return;
         }
 
         // --- VALIDACIÓN DE SALDO ---
         const remaining = detail.remainingBalance || 0;
         if (Number(amount) > remaining + 0.01) {
-            alert(`ATENCION: El abono (C$ ${Number(amount).toFixed(2)}) no puede ser mayor al saldo actual (C$ ${remaining.toFixed(2)}).`);
+            showAlert(
+                'warning',
+                '⚠️ Monto excede el saldo',
+                `El abono de C$ ${Number(amount).toFixed(2)} no puede ser mayor al saldo actual de C$ ${remaining.toFixed(2)}.`
+            );
             return;
         }
 
@@ -99,7 +74,7 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
         try {
             const session = await sessionService.getSession();
             if (!session) {
-                alert('No se pudo obtener la sesión del usuario');
+                showAlert('error', 'Sin sesión', 'No se pudo obtener la sesión del usuario.');
                 setLoading(false);
                 return;
             }
@@ -139,14 +114,14 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                             });
                         } catch (receiptError) {
                             console.error('[PAYMENT_MODAL] Error mostrando recibo:', receiptError);
-                            alert('Pago guardado pero hubo un error al mostrar el recibo');
+                            showAlert('error', 'Error', 'Pago guardado pero hubo un error al mostrar el recibo.');
                         }
                     }, 300);
 
                     return;
                 } catch (offlineError) {
                     console.error('[PAYMENT_MODAL] Error en modo offline:', offlineError);
-                    alert('Error al guardar el pago offline: ' + (offlineError as Error).message);
+                    showAlert('error', 'Error offline', 'Error al guardar el pago offline: ' + (offlineError as Error).message);
                     setLoading(false);
                     return;
                 }
@@ -163,7 +138,7 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
             }
         } catch (error) {
             console.error('[PAYMENT_MODAL] Error in payment modal:', error);
-            alert('Error al procesar el pago: ' + (error as Error).message);
+            showAlert('error', 'Error', 'Error al procesar el pago: ' + (error as Error).message);
         } finally {
             setLoading(false);
         }
@@ -236,23 +211,22 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                                     <Text style={[styles.metricValue, { color: '#2563eb', fontWeight: '600' }]}>C$ {Number(detail.remainingBalance || 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })}</Text>
                                 </View>
 
-                                {/* Information-only: no altera el total oficial. */}
-                                {restanteCuota.monto > 0 && (
-                                    <>
-                                        <View style={styles.metricRow}>
-                                            <Text style={styles.metricLabel}>
-                                                {`Falta para cuota #${restanteCuota.numero ?? ''}:`}
-                                            </Text>
-                                            <Text style={[styles.metricValue, { color: '#0ea5e9', fontWeight: '800' }]}>
-                                                C$ {restanteCuota.monto.toLocaleString('es-NI', { minimumFractionDigits: 2 })}
+                                {/* Pastilla: próxima cuota con adelanto parcial */}
+                                {proxCuota && (
+                                    <View style={styles.proxCuotaBadge}>
+                                        <View style={styles.proxCuotaLeft}>
+                                            <MaterialCommunityIcons name="calendar-clock" size={15} color="#0ea5e9" />
+                                            <Text style={styles.proxCuotaLabel}>
+                                                {`Cuota #${proxCuota.numero} · ${proxCuota.fecha.split('-').reverse().join('/')}`}
                                             </Text>
                                         </View>
-                                        {restanteCuota.fecha && (
-                                            <Text style={styles.helperText}>
-                                                {`Vence el ${restanteCuota.fecha.split('-').reverse().join('/')}`}
+                                        <View style={styles.proxCuotaRight}>
+                                            <Text style={styles.proxCuotaFalta}>
+                                                {`C$ ${proxCuota.montoPendiente.toLocaleString('es-NI', { minimumFractionDigits: 2 })}`}
                                             </Text>
-                                        )}
-                                    </>
+                                            <Text style={styles.proxCuotaSub}>por completar</Text>
+                                        </View>
+                                    </View>
                                 )}
                             </View>
 
@@ -310,6 +284,13 @@ export default function PaymentModal({ visible, onClose, credit, onPay }: Paymen
                     </View>
                 </KeyboardAvoidingView>
             </View>
+            <CustomAlert
+                visible={customAlert.visible}
+                type={customAlert.type}
+                title={customAlert.title}
+                message={customAlert.message}
+                onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+            />
         </Modal>
     );
 }
@@ -406,6 +387,44 @@ const styles = StyleSheet.create({
         textAlign: 'right',
         marginTop: -4,
         marginBottom: 6,
+    },
+    proxCuotaBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#e0f2fe',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginTop: 10,
+        borderLeftWidth: 3,
+        borderLeftColor: '#0ea5e9',
+    },
+    proxCuotaLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flex: 1,
+    },
+    proxCuotaLabel: {
+        fontSize: 11,
+        color: '#0369a1',
+        fontWeight: '600',
+    },
+    proxCuotaRight: {
+        alignItems: 'flex-end',
+    },
+    proxCuotaFalta: {
+        fontSize: 13,
+        fontWeight: '900',
+        color: '#0284c7',
+    },
+    proxCuotaSub: {
+        fontSize: 9,
+        color: '#7dd3fc',
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
     },
     divider: {
         height: 1,

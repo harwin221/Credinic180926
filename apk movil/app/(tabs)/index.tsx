@@ -158,7 +158,7 @@ export default function RecoveredScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <Text style={styles.versionText}>v1.0.0</Text>
+            <Text style={styles.versionText}>v1.0.4</Text>
           </View>
           <Text style={styles.gestorName}>{dashboardData.gestorName}</Text>
           <Text style={styles.greeting}>¡Que tengas un buen día!</Text>

@@ -48,6 +48,11 @@ export default function ClientsScreen() {
     const [creditFormClient, setCreditFormClient] = useState<any>(null);
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
     const [isReceiptVisible, setIsReceiptVisible] = useState(false);
+
+    // ─── Buscador de cancelados para représtamos ──────────────────────────────
+    const [reloanSearch, setReloanSearch] = useState('');
+    const [reloanSearchResults, setReloanSearchResults] = useState<any[]>([]);
+    const [isSearchingReloan, setIsSearchingReloan] = useState(false);
     const [alert, setAlert] = useState<{
         visible: boolean;
         type: 'success' | 'error' | 'warning' | 'info';
@@ -122,6 +127,45 @@ export default function ClientsScreen() {
         }
     };
 
+    // Busca en mis-clientes por término y filtra solo los cancelados que califican
+    const searchCancelados = useCallback(async (term: string) => {
+        const q = term.trim();
+        if (q.length < 2) {
+            setReloanSearchResults([]);
+            return;
+        }
+        setIsSearchingReloan(true);
+        try {
+            const resp = await apiFetch(`${API_ENDPOINTS.base}/api/mobile/mis-clientes?buscar=${encodeURIComponent(q)}`);
+            const result = await resp.json();
+            if (result.success) {
+                // Solo los cancelados con buen historial (isCancelled=true viene del backend)
+                // y que no tengan crédito activo con este gestor (activeCredits = 0)
+                const cancelados = (result.data.reloan || []).filter(
+                    (c: any) => c.isCancelled === true && (c.activeCredits ?? 0) === 0
+                );
+                setReloanSearchResults(cancelados);
+            } else {
+                setReloanSearchResults([]);
+            }
+        } catch (e) {
+            console.error('[RELOAN_SEARCH] Error:', e);
+            setReloanSearchResults([]);
+        } finally {
+            setIsSearchingReloan(false);
+        }
+    }, []);
+
+    // Debounce del buscador de cancelados
+    useEffect(() => {
+        if (reloanSearch.trim().length < 2) {
+            setReloanSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(() => searchCancelados(reloanSearch), 400);
+        return () => clearTimeout(timer);
+    }, [reloanSearch, searchCancelados]);
+
     const fetchClients = useCallback(async (searchTerm = '') => {
         const session = await sessionService.getSession();
         if (!session?.id) return;
@@ -131,11 +175,10 @@ export default function ClientsScreen() {
             if (result.success) {
                     // Filtrar en cliente del lado de la APK:
                     // Solo mostrar clientes que tengan al menos un crédito ACTIVO con este gestor.
-                    // El servidor puede devolver clientes con créditos históricos (cancelados/vencidos)
-                    // que en su momento fueron de este gestor pero ya fueron reasignados.
                     const allFiltered = (result.data.all || []).filter(
                         (c: any) => (c.activeCredits ?? 0) > 0
                     );
+                    // Représtamos activos: ≥75% pagado y buen promedio — solo los activos con este gestor
                     const reloanFiltered = (result.data.reloan || []).filter(
                         (c: any) => (c.activeCredits ?? 0) > 0
                     );
@@ -372,6 +415,63 @@ export default function ClientsScreen() {
                             </TouchableOpacity>
                         )) : (
                             <Text style={styles.emptyText}>No hay clientes para mostrar.</Text>
+                        )}
+
+                        {/* ── Buscador de cancelados (solo en pestaña Représtamos) ── */}
+                        {activeTab === 'Représtamos' && (
+                            <View style={styles.reloanSearchSection}>
+                                <View style={styles.reloanSearchDivider}>
+                                    <View style={styles.reloanDividerLine} />
+                                    <Text style={styles.reloanDividerText}>Buscar cancelados que aplican</Text>
+                                    <View style={styles.reloanDividerLine} />
+                                </View>
+                                <View style={styles.reloanSearchWrapper}>
+                                    <MaterialCommunityIcons name="account-search" size={18} color="#94a3b8" />
+                                    <TextInput
+                                        style={styles.reloanSearchInput}
+                                        placeholder="Nombre o cédula del cliente..."
+                                        placeholderTextColor="#94a3b8"
+                                        value={reloanSearch}
+                                        onChangeText={setReloanSearch}
+                                    />
+                                    {reloanSearch.length > 0 && (
+                                        <TouchableOpacity onPress={() => { setReloanSearch(''); setReloanSearchResults([]); }}>
+                                            <MaterialCommunityIcons name="close" size={16} color="#94a3b8" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                                {isSearchingReloan && (
+                                    <ActivityIndicator size="small" color="#0ea5e9" style={{ marginTop: 10 }} />
+                                )}
+                                {reloanSearchResults.length > 0 && reloanSearch.length >= 2 && (
+                                    reloanSearchResults.map((client: any) => (
+                                        <TouchableOpacity
+                                            key={`reloan_search_${client.id}`}
+                                            style={styles.reloanResultCard}
+                                            onPress={() => handleSelectClient(client)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={styles.reloanResultLeft}>
+                                                <MaterialCommunityIcons name="account-check" size={20} color="#10b981" />
+                                                <View style={{ marginLeft: 10, flex: 1 }}>
+                                                    <Text style={styles.reloanResultName}>{client.name}</Text>
+                                                    <Text style={styles.reloanResultSub}>{client.cedula} · Crédito cancelado ✓</Text>
+                                                </View>
+                                            </View>
+                                            <TouchableOpacity
+                                                style={styles.reloanCreateBtn}
+                                                onPress={(e) => { e.stopPropagation(); handleCreateCredit(client); }}
+                                            >
+                                                <MaterialCommunityIcons name="plus-circle" size={14} color="#fff" />
+                                                <Text style={styles.reloanCreateBtnText}>Crear Crédito</Text>
+                                            </TouchableOpacity>
+                                        </TouchableOpacity>
+                                    ))
+                                )}
+                                {!isSearchingReloan && reloanSearch.length >= 2 && reloanSearchResults.length === 0 && (
+                                    <Text style={styles.reloanEmpty}>No se encontraron clientes cancelados que apliquen.</Text>
+                                )}
+                            </View>
                         )}
                     </ScrollView>
                 )}
@@ -805,6 +905,96 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
         color: '#0284c7',
+    },
+    // ── Buscador de cancelados en Représtamos ──────────────────────────────────
+    reloanSearchSection: {
+        marginTop: 20,
+        paddingTop: 4,
+    },
+    reloanSearchDivider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        gap: 8,
+    },
+    reloanDividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: '#e2e8f0',
+    },
+    reloanDividerText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#94a3b8',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    reloanSearchWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8fafc',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        height: 44,
+        gap: 8,
+        marginBottom: 8,
+    },
+    reloanSearchInput: {
+        flex: 1,
+        fontSize: 13,
+        color: '#334155',
+    },
+    reloanResultCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#f0fdf4',
+        borderWidth: 1,
+        borderColor: '#bbf7d0',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginBottom: 8,
+    },
+    reloanResultLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    reloanResultName: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#1e293b',
+    },
+    reloanResultSub: {
+        fontSize: 11,
+        color: '#10b981',
+        fontWeight: '600',
+        marginTop: 1,
+    },
+    reloanCreateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#10b981',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        gap: 4,
+        marginLeft: 8,
+    },
+    reloanCreateBtnText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    reloanEmpty: {
+        fontSize: 12,
+        color: '#94a3b8',
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
     },
 });
 

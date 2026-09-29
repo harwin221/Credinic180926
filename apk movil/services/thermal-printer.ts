@@ -152,6 +152,12 @@ class ThermalPrinterService {
 
     async printReceipt(printerAddress: string, receipt: ReceiptData): Promise<void> {
         try {
+            // Siempre re-inicializar antes de imprimir.
+            // Si la impresora se apagó y volvió a encender, el stack BLE del
+            // módulo nativo queda en estado zombie con initialized=true.
+            // Forzar init() garantiza que la conexión parta limpia cada vez,
+            // replicando lo que ocurre al cerrar y reabrir la app.
+            this.initialized = false;
             const BLEPrinter = await this.initPrinter();
             if (!BLEPrinter) {
                 throw new Error('Módulo de impresora térmica no disponible en este dispositivo.');
@@ -220,6 +226,12 @@ class ThermalPrinterService {
             receiptText += leftRight('Dias Mora:', String(receipt.diasMora ?? 0)) + '\n';
             receiptText += dottedSeparator + '\n';
             receiptText += leftRight('Total a pagar:', 'C$ ' + fmt(receipt.totalAPagar)) + '\n';
+
+            // Cuota cubierta — solo si el abono la completó al 100%
+            if (receipt.cuotaPagadaNumero != null) {
+                receiptText += leftRight('Cuota pagada:', '# ' + receipt.cuotaPagadaNumero) + '\n';
+            }
+
             receiptText += separator + '\n';
 
             // Monto recibido — más grande con doble espacio arriba/abajo
