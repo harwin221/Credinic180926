@@ -4,7 +4,7 @@ import {
     TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { sessionService } from '../../services/session';
 import { API_ENDPOINTS } from '../../config/api';
@@ -41,22 +41,27 @@ const FRECUENCIAS: Record<string, string> = {
 };
 
 function EditRequestModal({ visible, request, onClose, onSaved }: EditModalProps) {
-    const [monto, setMonto]           = useState('');
-    const [plazo, setPlazo]           = useState('');
-    const [tasa, setTasa]             = useState('');
-    const [fechaPago, setFechaPago]   = useState('');
-    const [saving, setSaving]         = useState(false);
+    const [monto, setMonto]         = useState('');
+    const [plazo, setPlazo]         = useState('');
+    const [tasa, setTasa]           = useState('');
+    const [fechaPago, setFechaPago] = useState('');
+    const [saving, setSaving]       = useState(false);
 
-    // Poblar al abrir
-    useFocusEffect(useCallback(() => { /* no-op */ }, []));
+    // Poblar los campos cada vez que se abre el modal con una solicitud distinta
+    useEffect(() => {
+        if (visible && request) {
+            setMonto(String(request.amount || ''));
+            setPlazo(String(request.termMonths || ''));
+            setTasa(String(request.interestRate || ''));
+            setFechaPago(
+                request.firstPaymentDate
+                    ? String(request.firstPaymentDate).substring(0, 10)
+                    : ''
+            );
+        }
+    }, [visible, request]);
+
     if (!request) return null;
-
-    const handleOpen = () => {
-        setMonto(String(request.amount || ''));
-        setPlazo(String(request.termMonths || ''));
-        setTasa(String(request.interestRate || ''));
-        setFechaPago(request.firstPaymentDate ? String(request.firstPaymentDate).substring(0, 10) : '');
-    };
 
     // Recalcular preview en tiempo real
     const montoN   = parseFloat(monto) || 0;
@@ -111,7 +116,7 @@ function EditRequestModal({ visible, request, onClose, onSaved }: EditModalProps
     };
 
     return (
-        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose} onShow={handleOpen}>
+        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
             <KeyboardAvoidingView
                 style={styles.editOverlay}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -654,6 +659,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         padding: 20,
+        paddingBottom: Platform.OS === 'android' ? 32 : 24,
         maxHeight: '90%',
     },
     editHeader: {
@@ -696,6 +702,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 8,
         marginTop: 20,
+        marginBottom: 8,
     },
     saveButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
 });
