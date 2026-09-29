@@ -41,7 +41,14 @@ export const initOfflineDatabase = () => {
                 promedioAtraso REAL DEFAULT 0,
                 estado INTEGER DEFAULT 1,
                 tipo_abono INTEGER DEFAULT 1,
-                filas TEXT
+                filas TEXT,
+                interestRate REAL DEFAULT 0,
+                termMonths INTEGER DEFAULT 0,
+                installmentAmount REAL DEFAULT 0,
+                totalAmount REAL DEFAULT 0,
+                disbursementDate TEXT,
+                firstPaymentDate TEXT,
+                dueDate TEXT
             );`
         );
         db.execSync(
@@ -151,12 +158,20 @@ function addCreditColumnsIfNeeded() {
 
         const have = (n: string) => cols.some((c: any) => c.name === n);
         const missing: Array<[string, string]> = [
-            ['totalCapital',   'REAL DEFAULT 0'],
-            ['totalInteres',    'REAL DEFAULT 0'],
-            ['promedioAtraso',  'REAL DEFAULT 0'],
-            ['estado',          'INTEGER DEFAULT 1'],
-            ['tipo_abono',      'INTEGER DEFAULT 1'],
-            ['filas',           'TEXT'],
+            ['totalCapital',      'REAL DEFAULT 0'],
+            ['totalInteres',      'REAL DEFAULT 0'],
+            ['promedioAtraso',    'REAL DEFAULT 0'],
+            ['estado',            'INTEGER DEFAULT 1'],
+            ['tipo_abono',        'INTEGER DEFAULT 1'],
+            ['filas',             'TEXT'],
+            // Campos del préstamo faltantes para modo offline
+            ['interestRate',      'REAL DEFAULT 0'],
+            ['termMonths',        'INTEGER DEFAULT 0'],
+            ['installmentAmount', 'REAL DEFAULT 0'],
+            ['totalAmount',       'REAL DEFAULT 0'],
+            ['disbursementDate',  'TEXT'],
+            ['firstPaymentDate',  'TEXT'],
+            ['dueDate',           'TEXT'],
         ];
 
         for (const [name, type] of missing) {
@@ -172,6 +187,98 @@ function addCreditColumnsIfNeeded() {
         console.error('[DB] Error añadiendo columnas a offline_credits:', error);
     }
 }
+
+/**
+ * Guarda clientes, créditos y abonos en una única transacción SQLite.
+ * Si cualquiera de los tres pasos falla, se hace ROLLBACK completo y la
+ * base de datos local queda intacta con los datos anteriores.
+ */
+export const saveOfflineDataAtomic = (
+    clients: any[],
+    credits: any[],
+    abonos: any[]
+): void => {
+    db.withTransactionSync(() => {
+        // ── Clientes ──────────────────────────────────────────────────────────
+        db.execSync('DELETE FROM offline_clients;');
+        const stmtC = db.prepareSync(
+            'INSERT INTO offline_clients (id, clientNumber, name, cedula, phone, address, neighborhood, municipality, department, isNew) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        for (const client of clients) {
+            stmtC.executeSync([
+                client.id,
+                client.clientNumber || '',
+                client.name || '',
+                client.cedula || '',
+                client.phone || '',
+                client.address || '',
+                client.neighborhood || '',
+                client.municipality || '',
+                client.department || '',
+                client.isNew ? 1 : 0,
+            ]);
+        }
+        stmtC.finalizeSync();
+
+        // ── Créditos ──────────────────────────────────────────────────────────
+        db.execSync('DELETE FROM offline_credits;');
+        const stmtCr = db.prepareSync(
+            'INSERT INTO offline_credits (id, creditNumber, clientName, clientId, amount, remainingBalance, dueTodayAmount, overdueAmount, lateDays, paymentFrequency, collectionsManager, details, paymentPlan, totalCapital, totalInteres, promedioAtraso, estado, tipo_abono, filas, interestRate, termMonths, installmentAmount, totalAmount, disbursementDate, firstPaymentDate, dueDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        for (const credit of credits) {
+            stmtCr.executeSync([
+                credit.id,
+                credit.creditNumber || '',
+                credit.clientName || '',
+                credit.clientId || '',
+                credit.amount || 0,
+                credit.remainingBalance || 0,
+                credit.dueTodayAmount || 0,
+                credit.overdueAmount || 0,
+                credit.lateDays || 0,
+                credit.paymentFrequency || '',
+                credit.collectionsManager || '',
+                JSON.stringify(credit.details || {}),
+                JSON.stringify(credit.paymentPlan || []),
+                credit.totalCapital || 0,
+                credit.totalInteres || 0,
+                credit.promedioAtraso || 0,
+                credit.estado ?? 1,
+                credit.tipo_abono ?? 1,
+                JSON.stringify(credit.filas || []),
+                credit.interestRate || 0,
+                credit.termMonths || 0,
+                credit.installmentAmount || 0,
+                credit.totalAmount || 0,
+                credit.disbursementDate || null,
+                credit.firstPaymentDate || null,
+                credit.dueDate || null,
+            ]);
+        }
+        stmtCr.finalizeSync();
+
+        // ── Abonos ────────────────────────────────────────────────────────────
+        db.execSync('DELETE FROM offline_abonos;');
+        const stmtA = db.prepareSync(
+            'INSERT INTO offline_abonos (id, clientId, creditId, abonoId, receiptNumber, monto, fecha, detalle) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        for (const a of abonos) {
+            stmtA.executeSync([
+                a.id,
+                a.clientId || '',
+                a.creditId || '',
+                a.abonoId ?? null,
+                a.receiptNumber || '',
+                a.monto || 0,
+                a.fecha || '',
+                JSON.stringify(a.detalle || {}),
+            ]);
+        }
+        stmtA.finalizeSync();
+    });
+
+    console.log(`[DB] Guardado atómico: ${clients.length} clientes, ${credits.length} créditos, ${abonos.length} abonos`);
+};
 
 // Función para limpiar todas las tablas de la base de datos offline
 export const clearOfflineDatabase = async () => {
@@ -244,7 +351,7 @@ export const saveCreditsOffline = async (credits: any[]) => {
         db.execSync('DELETE FROM offline_credits;');
         
         const stmt = db.prepareSync(
-            'INSERT INTO offline_credits (id, creditNumber, clientName, clientId, amount, remainingBalance, dueTodayAmount, overdueAmount, lateDays, paymentFrequency, collectionsManager, details, paymentPlan, totalCapital, totalInteres, promedioAtraso, estado, tipo_abono, filas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO offline_credits (id, creditNumber, clientName, clientId, amount, remainingBalance, dueTodayAmount, overdueAmount, lateDays, paymentFrequency, collectionsManager, details, paymentPlan, totalCapital, totalInteres, promedioAtraso, estado, tipo_abono, filas, interestRate, termMonths, installmentAmount, totalAmount, disbursementDate, firstPaymentDate, dueDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         for (const credit of credits) {
@@ -268,6 +375,13 @@ export const saveCreditsOffline = async (credits: any[]) => {
                 credit.estado ?? 1,
                 credit.tipo_abono ?? 1,
                 JSON.stringify(credit.filas || []),
+                credit.interestRate || 0,
+                credit.termMonths || 0,
+                credit.installmentAmount || 0,
+                credit.totalAmount || 0,
+                credit.disbursementDate || null,
+                credit.firstPaymentDate || null,
+                credit.dueDate || null,
             ]);
         }
 
@@ -352,6 +466,13 @@ export const getOfflineCredits = async (clientId?: string): Promise<any[]> => {
             promedioAtraso: r.promedioAtraso,
             estado: r.estado,
             tipo_abono: r.tipo_abono,
+            interestRate: r.interestRate ?? 0,
+            termMonths: r.termMonths ?? 0,
+            installmentAmount: r.installmentAmount ?? 0,
+            totalAmount: r.totalAmount ?? 0,
+            disbursementDate: r.disbursementDate || null,
+            firstPaymentDate: r.firstPaymentDate || null,
+            dueDate: r.dueDate || null,
         }));
     } catch (error) {
         console.error('[DB] Error leyendo créditos offline:', error);

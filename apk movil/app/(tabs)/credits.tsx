@@ -1162,8 +1162,9 @@ export default function CreditsScreen() {
                 visible={isReceiptVisible}
                 onClose={() => {
                     setIsReceiptVisible(false);
-                    // Llevar al agente a Recaudado para que al regresar a
+                    // Navegar a la tab index (Recaudado) para que al regresar a
                     // Créditos el useFocusEffect actualice SQLite y la lista.
+                    // Se usa la ruta leaf completa para evitar "Unmatched Route credinicamobile:///"
                     router.replace('/(tabs)/index' as any);
                 }}
                 receipt={receiptData}

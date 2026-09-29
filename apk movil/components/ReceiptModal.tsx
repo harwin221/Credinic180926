@@ -64,15 +64,16 @@ export default function ReceiptModal({ visible, onClose, receipt }: ReceiptModal
                         ? `No se encontró la dirección Bluetooth de "${name}". Asegúrate de que la impresora esté encendida y emparejada, y vuelve a seleccionarla desde tu perfil.`
                         : 'No hay impresora seleccionada. Ve a tu perfil y selecciona la impresora Bluetooth.'
                 );
-                return;
+                // Salir aquí — el finally se encarga de setPrinting(false)
+            } else {
+                await thermalPrinterService.printReceipt(address, receipt);
+                AlertHelper.alert('Éxito', 'Comando de impresión enviado a la impresora');
             }
-
-            await thermalPrinterService.printReceipt(address, receipt);
-            AlertHelper.alert('Éxito', 'Comando de impresión enviado a la impresora');
         } catch (e: any) {
             console.error('[PRINT] Error al imprimir:', e);
             AlertHelper.alert('Error de Impresión', e.message || 'No se pudo conectar con la impresora. Asegúrate de que el Bluetooth esté encendido y la impresora vinculada.');
         } finally {
+            // Siempre liberar el estado de carga, sin importar cómo terminó el try
             setPrinting(false);
         }
     };

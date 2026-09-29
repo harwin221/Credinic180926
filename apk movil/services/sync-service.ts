@@ -12,12 +12,14 @@ import {
     markPaymentAsSynced,
     getPendingCredits,
     markCreditAsSynced,
-    saveClientsOffline,
-    saveCreditsOffline,
-    saveAbonosOffline,
+    saveOfflineDataAtomic,
     setConfig,
     getConfig
 } from './offline-db';
+
+// Guard de concurrencia: evita que descarga automática al login y sync manual
+// del usuario corran en paralelo escribiendo las mismas tablas SQLite.
+let _isSyncing = false;
 import { sessionService } from './session';
 
 // Verificar si hay conexión real contra el servidor
@@ -161,6 +163,12 @@ export const downloadOfflineData = async (): Promise<{
     success: boolean;
     message: string;
 }> => {
+    // Si ya hay una descarga en curso (ej: automática al login), no lanzar otra en paralelo.
+    if (_isSyncing) {
+        console.log('[SYNC] downloadOfflineData omitida: ya hay una sincronización en curso');
+        return { success: false, message: 'Sincronización ya en curso' };
+    }
+    _isSyncing = true;
     try {
         const session = await sessionService.getSession();
         if (!session?.id) {
@@ -235,21 +243,32 @@ export const downloadOfflineData = async (): Promise<{
                     creditNumber:       prestamo.consecutivo,
                     clientName:         cliente.full_name || `${cliente.nombres} ${cliente.apellidos}`,
                     clientId:           String(cliente.id),
-                    amount:             parseFloat(prestamo.monto) || 0,
+                    amount:             parseFloat(prestamo.monto_prestamo ?? prestamo.monto) || 0,
                     remainingBalance:   parseFloat(prestamo.pendiente_abono) || 0,
                     dueTodayAmount,
                     overdueAmount,
                     lateDays:           cuotasVenc.length,
-                    paymentFrequency:   '',
+                    paymentFrequency:   (() => {
+                        const tipos: Record<string, string> = { '1': 'Diario', '2': 'Semanal', '3': 'Quincenal', '4': 'Mensual', '5': 'Trimestral', '6': 'Bimestral', '7': 'Catorcenal' };
+                        return tipos[String(prestamo.forma_pago_tipo ?? '')] || '';
+                    })(),
                     collectionsManager: session.fullName,
                     details:            { dueTodayAmount, overdueAmount, remainingBalance: parseFloat(prestamo.pendiente_abono) || 0, lateDays: cuotasVenc.length, paidToday: 0 },
                     paymentPlan,
                     filas:              cuotas,
                     totalCapital,
                     totalInteres,
-                    promedioAtraso:     parseFloat(prestamo.promedio_dias_atraso) || 0,
+                    promedioAtraso:     parseFloat(prestamo.promedio_atraso ?? prestamo.promedio_dias_atraso) || 0,
                     estado:             prestamo.estado ?? 1,
                     tipo_abono:         prestamo.tipo_abono ?? 1,
+                    // Campos adicionales para vista de detalle offline
+                    interestRate:       parseFloat(prestamo.tasa_prestamo) || 0,
+                    termMonths:         parseInt(prestamo.plazo_pago) || 0,
+                    installmentAmount:  parseFloat(prestamo.monto_cuota) || 0,
+                    totalAmount:        parseFloat(prestamo.monto_financiado) || 0,
+                    disbursementDate:   prestamo.fecha_desembolso || null,
+                    firstPaymentDate:   prestamo.fecha_primer_pago || cuotas[0]?.fecha_cuota || null,
+                    dueDate:            cuotas.length > 0 ? cuotas[cuotas.length - 1].fecha_cuota : null,
                 });
 
                 // Abonos ya realizados: permiten reimprimir recibos antiguos sin conexión.
@@ -277,9 +296,7 @@ export const downloadOfflineData = async (): Promise<{
             }
         }
 
-        await saveClientsOffline(allClients);
-        await saveCreditsOffline(allCredits);
-        await saveAbonosOffline(allAbonos);
+        saveOfflineDataAtomic(allClients, allCredits, allAbonos);
         await setConfig('lastSync', Date.now().toString());
 
         return {
@@ -288,6 +305,8 @@ export const downloadOfflineData = async (): Promise<{
         };
     } catch (error: any) {
         return { success: false, message: error.message };
+    } finally {
+        _isSyncing = false;
     }
 };
 

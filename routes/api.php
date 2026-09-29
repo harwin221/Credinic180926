@@ -41,6 +41,7 @@ Route::prefix('mobile')->group(function () {
         Route::post('/mobile_create_client', [MobileApiController::class, 'crearCliente']);
         Route::get('/departamentos-municipios', [MobileApiController::class, 'getDepartamentoMunicipios']);
         Route::get('/requests',           [MobileApiController::class, 'requests']);
+        Route::put('/update-request',     [MobileApiController::class, 'updateRequest']);
         Route::post('/approve-credit',    [MobileApiController::class, 'approveCredit']);
         Route::post('/reject-credit',     [MobileApiController::class, 'rejectCredit']);
         Route::get('/disbursements',      [MobileApiController::class, 'disbursements']);

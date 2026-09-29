@@ -152,20 +152,37 @@ class ThermalPrinterService {
 
     async printReceipt(printerAddress: string, receipt: ReceiptData): Promise<void> {
         try {
-            // Siempre re-inicializar antes de imprimir.
-            // Si la impresora se apagó y volvió a encender, el stack BLE del
-            // módulo nativo queda en estado zombie con initialized=true.
-            // Forzar init() garantiza que la conexión parta limpia cada vez,
-            // replicando lo que ocurre al cerrar y reabrir la app.
-            this.initialized = false;
-            const BLEPrinter = await this.initPrinter();
+            const BLEPrinter = this.getBLEPrinterInstance();
             if (!BLEPrinter) {
                 throw new Error('Módulo de impresora térmica no disponible en este dispositivo.');
             }
 
+            // Solicitar permisos si aún no se han concedido
+            const hasPermissions = await this.requestBluetoothPermissions();
+            if (!hasPermissions) throw new Error('Permisos de Bluetooth no concedidos');
+
+            // Siempre re-inicializar el stack BLE antes de imprimir.
+            // Si la impresora se apagó y volvió a encender, el módulo nativo
+            // queda en estado zombie. Re-inicializar garantiza conexión limpia.
+            // Se ignora el error si el módulo ya estaba inicializado — en ese
+            // caso simplemente continúa con el estado actual.
+            try {
+                await BLEPrinter.init();
+            } catch (initErr) {
+                console.warn('[PRINT] BLEPrinter.init() warning (se ignora):', initErr);
+            }
+            this.initialized = true;
+
             console.log('[PRINT] Conectando a:', printerAddress);
             if (typeof BLEPrinter.connectPrinter === 'function') {
-                await BLEPrinter.connectPrinter(printerAddress);
+                // Timeout de 10 s para evitar que se quede colgado si la impresora
+                // está apagada o fuera de rango.
+                await Promise.race([
+                    BLEPrinter.connectPrinter(printerAddress),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con la impresora. Verifica que esté encendida y cerca.')), 10000)
+                    ),
+                ]);
             }
 
             const fmt = (n: any) => {

@@ -154,21 +154,28 @@ class MobileApiController extends Controller
 
             $clientesMap[$cid]['prestamos'][] = [
                 'id'              => $prestamo->id,
-                'id_enc'          => $prestamo->id_enc,
-                'consecutivo'     => $prestamo->consecutivo,
-                'monto'           => (float)$prestamo->monto,
-                'pendiente_abono' => (float)$prestamo->pendiente_abono,
-                'moneda'          => $prestamo->moneda_prestamo ?? 1,
-                'forma_pago_tipo' => $prestamo->forma_pago_tipo,
-                'estado'          => $prestamo->estado,
-                'agente_id'       => $prestamo->agente_id,
-                'es_externo'      => false,
-                'cuotas'          => $cuotas,
-                'cobrado_hoy'     => $montoCobradoHoy,
-                'ultimo_abono_id' => $ultimoAbonoHoy ? $ultimoAbonoHoy->id : null,
-                'tiene_abono_hoy' => $montoCobradoHoy > 0,
-                'promedio_atraso' => (float)$prestamo->promedio_dias_atraso,
-                'abonos_hoy'      => $abonosHoyDetalle,
+                'id_enc'              => $prestamo->id_enc,
+                'consecutivo'         => $prestamo->consecutivo,
+                'monto'               => (float)$prestamo->monto,
+                'monto_prestamo'      => (float)($prestamo->monto_prestamo ?? $prestamo->monto),
+                'monto_financiado'    => (float)($prestamo->monto_financiado ?? 0),
+                'monto_cuota'         => (float)($prestamo->monto_cuota ?? 0),
+                'tasa_prestamo'       => (float)($prestamo->tasa_prestamo ?? 0),
+                'plazo_pago'          => (int)($prestamo->plazo_pago ?? 0),
+                'forma_pago_tipo'     => $prestamo->forma_pago_tipo,
+                'fecha_desembolso'    => $prestamo->fecha_desembolso ? (string)$prestamo->fecha_desembolso : null,
+                'fecha_primer_pago'   => $prestamo->fecha_primer_pago ? (string)$prestamo->fecha_primer_pago : null,
+                'pendiente_abono'     => (float)$prestamo->pendiente_abono,
+                'moneda'              => $prestamo->moneda_prestamo ?? 1,
+                'estado'              => $prestamo->estado,
+                'agente_id'           => $prestamo->agente_id,
+                'es_externo'          => false,
+                'cuotas'              => $cuotas,
+                'cobrado_hoy'         => $montoCobradoHoy,
+                'ultimo_abono_id'     => $ultimoAbonoHoy ? $ultimoAbonoHoy->id : null,
+                'tiene_abono_hoy'     => $montoCobradoHoy > 0,
+                'promedio_atraso'     => (float)$prestamo->promedio_dias_atraso,
+                'abonos_hoy'          => $abonosHoyDetalle,
             ];
 
             $clientesMap[$cid]['totalPendiente'] += (float)$prestamo->pendiente_abono;
@@ -360,15 +367,19 @@ class MobileApiController extends Controller
                 ->get()->pluck('admin_asignado_id')->toArray();
             $tieneAsignados = count($agentesAsignados) > 0;
 
-            $solicitudesPendientes = \App\Models\prestamosModel::where('estado_aprobacion', 1)
+            $solicitudesPendientes = \App\Models\prestamosModel::where('estado', '!=', 4)
+                ->where('estado_aprobacion', 1)
                 ->where('desembolsado', 0)
                 ->when($tieneAsignados, function($q) use ($agentesAsignados) {
                     $q->whereIn('agente_id', $agentesAsignados);
                 })
                 ->count();
 
-            $desembolsosPendientes = \App\Models\prestamosModel::where('estado_aprobacion', 2)
-                ->where('desembolsado', 0)
+            $desembolsosPendientes = \App\Models\prestamosModel::where('estado', '!=', 4)
+                ->where('estado_aprobacion', 2)
+                ->where(function($d) {
+                    $d->where('desembolsado', 0)->orWhereNull('desembolsado');
+                })
                 ->when($tieneAsignados, function($q) use ($agentesAsignados) {
                     $q->whereIn('agente_id', $agentesAsignados);
                 })
@@ -1624,6 +1635,79 @@ class MobileApiController extends Controller
                 'success' => false,
                 'message' => 'Error al aprobar solicitud: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/mobile/update-request
+     * Edita los campos básicos de una solicitud pendiente (estado_aprobacion = 1, no desembolsada).
+     * Solo el agente que creó la solicitud o un gerente con ese agente asignado puede editarla.
+     */
+    public function updateRequest(Request $request)
+    {
+        $request->validate([
+            'creditId'       => 'required',
+            'monto'          => 'required|numeric|min:1',
+            'plazo'          => 'required|integer|min:1',
+            'tasa'           => 'required|numeric|min:0',
+            'fechaPrimerPago'=> 'required|date',
+        ]);
+
+        try {
+            $user     = $request->user() ?? \App\Models\User::find($request->get('userId'));
+            $prestamo = \App\Models\prestamosModel::find($request->creditId);
+
+            if (!$prestamo) {
+                return response()->json(['success' => false, 'message' => 'No se encontró la solicitud.'], 404);
+            }
+
+            // Solo editar si está pendiente y no desembolsada
+            if ($prestamo->estado_aprobacion != 1 || $prestamo->desembolsado == 1) {
+                return response()->json(['success' => false, 'message' => 'Solo se pueden editar solicitudes pendientes no desembolsadas.'], 422);
+            }
+
+            $monto      = (float) $request->monto;
+            $plazo      = (int)   $request->plazo;
+            $tasa       = (float) $request->tasa;
+            $fechaPago  = $request->fechaPrimerPago;
+            $formaPago  = $request->formaPago ?? $prestamo->forma_pago_tipo;
+
+            // Recalcular monto de cuota e interés total
+            $tasaMensual     = $tasa / 100;
+            $interesMensual  = round($monto * $tasaMensual, 2);
+            $interesTotal    = round($interesMensual * $plazo, 2);
+            $montoFinanciado = round($monto + $interesTotal, 2);
+            $montoCuota      = $plazo > 0 ? round($montoFinanciado / $plazo, 2) : 0;
+
+            $prestamo->monto_prestamo    = $monto;
+            $prestamo->monto             = $monto;
+            $prestamo->plazo_pago        = $plazo;
+            $prestamo->tasa_prestamo     = $tasa;
+            $prestamo->interes_mes       = $interesMensual;
+            $prestamo->interes_total_pagar = $interesTotal;
+            $prestamo->monto_financiado  = $montoFinanciado;
+            $prestamo->monto_cuota       = $montoCuota;
+            $prestamo->fecha_primer_pago = $fechaPago;
+            $prestamo->forma_pago_tipo   = $formaPago;
+            $prestamo->updated_user_id   = $user ? $user->id : null;
+            $prestamo->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Solicitud actualizada correctamente.',
+                'data' => [
+                    'id'               => $prestamo->id,
+                    'amount'           => $monto,
+                    'termMonths'       => $plazo,
+                    'interestRate'     => $tasa,
+                    'totalAmount'      => $montoFinanciado,
+                    'installmentAmount'=> $montoCuota,
+                    'firstPaymentDate' => $fechaPago,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en updateRequest: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error al actualizar: ' . $e->getMessage()], 500);
         }
     }
 

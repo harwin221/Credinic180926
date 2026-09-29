@@ -19,9 +19,15 @@ export default function SyncIndicator() {
     const checkConnectionStatus = async () => {
         const online = await checkConnection();
 
-        // Detectar transición offline → online con items pendientes
-        if (prevOnline.current === false && online && pendingItems > 0) {
-            handleSync();
+        // Detectar transición offline → online: releer los items pendientes
+        // en tiempo real (no usar el estado de React que puede estar desactualizado).
+        if (prevOnline.current === false && online) {
+            const stats: any = await getOfflineStats();
+            const currentPending = (stats.pendingPayments || 0) + (stats.pendingCredits || 0);
+            setPendingItems(currentPending);
+            if (currentPending > 0) {
+                handleSync();
+            }
         }
 
         prevOnline.current = online;

@@ -73,10 +73,13 @@ export const getMisClientesOffline = async (buscar = ''): Promise<{
             all.push(clientData);
 
             // Mismo criterio de représtamo que usa el backend: 75% pagado
-            // y atraso promedio bajo 2.5 días.
+            // sobre el monto_financiado (capital + intereses) y atraso promedio
+            // bajo 2.5 días. Se usa totalAmount (= monto_financiado) guardado
+            // en SQLite; si no existe se cae al amount para no dejar el campo vacío.
             if (activo) {
-                const pagado = Math.max(0, n(activo.amount) - n(activo.remainingBalance));
-                const pctPagado = n(activo.amount) > 0 ? (pagado / n(activo.amount)) * 100 : 0;
+                const base = n(activo.totalAmount) > 0 ? n(activo.totalAmount) : n(activo.amount);
+                const pagado = Math.max(0, base - n(activo.remainingBalance));
+                const pctPagado = base > 0 ? (pagado / base) * 100 : 0;
                 if (pctPagado >= 75 && n(activo.promedioAtraso) < 2.5) {
                     reloan.push(clientData);
                 }
@@ -172,12 +175,71 @@ export const getClienteDetalleOffline = async (clientId: string | number): Promi
                 totalCapital:      n(cr.totalCapital),
                 totalInteres:      n(cr.totalInteres),
                 paymentFrequency:  cr.paymentFrequency || '',
+                // Campos financieros del préstamo (ahora guardados en SQLite)
+                interestRate:      n(cr.interestRate),
+                termMonths:        n(cr.termMonths),
+                installmentAmount: n(cr.installmentAmount),
+                totalAmount:       n(cr.totalAmount),
+                // Aliases que usan clients.tsx y ClientDetailModal
+                montoPrestado:     n(cr.amount),
+                montoFinanciado:   n(cr.totalAmount),
+                financedAmount:    n(cr.totalAmount),
+                term:              n(cr.termMonths),
+                plazoPago:         n(cr.termMonths),
+                formaPago:         cr.paymentFrequency || '',
+                // Fechas
+                disbursementDate:  cr.disbursementDate || null,
+                firstPaymentDate:  cr.firstPaymentDate || null,
+                dueDate:           cr.dueDate || null,
+                deliveryDate:      cr.disbursementDate || null,
+                fechaApertura:     cr.disbursementDate || null,
+                fecha_desembolso:  cr.disbursementDate || null,
+                fechaFinal:        cr.dueDate || null,
+                fecha_ultimo_pago: cr.dueDate || null,
+                // totalPaid calculado desde el plan de pagos
+                totalPaid: (() => {
+                    const totalFinanciado = n(cr.totalAmount) || plan.reduce((s: number, f: any) => s + n(f.monto), 0);
+                    return Math.max(0, totalFinanciado - n(cr.remainingBalance));
+                })(),
+                // avgLateDaysCurrentCredit y avgLateDaysGlobal que usa clients.tsx
+                avgLateDaysCurrentCredit: n(cr.promedioAtraso),
+                avgLateDaysGlobal:        n(cr.promedioAtraso),
                 // Se reenvían tal cual: la pantalla de detalle los usa para
                 // pintar tasas, términos y filas del crédito.
                 details:           cr.details || {},
                 filas:             cr.filas || [],
                 paymentPlan,
                 paymentHistory,
+                // fullStatement esperado por ClientDetailModal
+                fullStatement: {
+                    installments: (cr.filas || []).map((f: any, idx: number) => ({
+                        numero_cuota:          f.numero_cuota ?? f.numero ?? idx + 1,
+                        fecha_cuota:           f.fecha_cuota ?? f.fecha ?? '',
+                        monto_cuota:           n(f.monto_cuota ?? f.monto),
+                        monto_interes:         n(f.monto_interes ?? f.interes),
+                        monto_mora:            n(f.monto_mora ?? f.mora),
+                        monto_pendiente_cuota: n(f.monto_pendiente_cuota ?? f.pendiente),
+                        estado:                f.estado ?? 1,
+                        status:                f.estado === 3 ? 'PAGADA' : (n(f.monto_pendiente_cuota ?? f.pendiente) > 0 && n(f.monto_pendiente_cuota ?? f.pendiente) < n(f.monto_cuota ?? f.monto) ? 'PARCIAL' : 'PENDIENTE'),
+                    })),
+                    payments: paymentHistory,
+                    totals: {
+                        plan: {
+                            cuota:  plan.reduce((s: number, f: any) => s + n(f.monto), 0),
+                            capital: n(cr.totalCapital),
+                            interes: n(cr.totalInteres),
+                            mora:    0,
+                            pagado:  Math.max(0, (n(cr.totalAmount) || plan.reduce((s: number, f: any) => s + n(f.monto), 0)) - n(cr.remainingBalance)),
+                            saldo:   n(cr.remainingBalance),
+                        },
+                        abonos: {
+                            total:   Math.max(0, (n(cr.totalAmount) || plan.reduce((s: number, f: any) => s + n(f.monto), 0)) - n(cr.remainingBalance)),
+                            capital: n(cr.totalCapital),
+                            interes: n(cr.totalInteres),
+                            mora:    0,
+                        },
+                    },
+                },
             };
         });
 
