@@ -23,9 +23,9 @@ function RootLayoutContent() {
         console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
         
         if (isManager) {
-          router.replace('/(manager-tabs)');
+          router.replace('/(manager-tabs)/index' as any);
         } else {
-          router.replace('/(tabs)');
+          router.replace('/(tabs)/index' as any);
         }
       }
     }

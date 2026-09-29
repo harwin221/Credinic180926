@@ -67,9 +67,9 @@ export default function LoginScreen() {
                 
                 // Redirigir directamente sin alert
                 if (isManager) {
-                    router.replace('/(manager-tabs)');
+                    router.replace('/(manager-tabs)/index' as any);
                 } else {
-                    router.replace('/(tabs)');
+                    router.replace('/(tabs)/index' as any);
                 }
             } else {
                 // Credenciales incorrectas, usuario inactivo, o rol no permitido

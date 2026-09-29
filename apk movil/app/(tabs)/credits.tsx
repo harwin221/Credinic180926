@@ -1162,10 +1162,9 @@ export default function CreditsScreen() {
                 visible={isReceiptVisible}
                 onClose={() => {
                     setIsReceiptVisible(false);
-                    // Navegar a la tab index (Recaudado) para que al regresar a
-                    // Créditos el useFocusEffect actualice SQLite y la lista.
-                    // Se usa la ruta leaf completa para evitar "Unmatched Route credinicamobile:///"
-                    router.replace('/(tabs)/index' as any);
+                    // No se navega — el useFocusEffect de esta pantalla ya recarga
+                    // los datos cuando vuelve a tomar foco. Navegar forzado causaba
+                    // "Unmatched Route credinicamobile:///" al re-evaluar el layout.
                 }}
                 receipt={receiptData}
             />
