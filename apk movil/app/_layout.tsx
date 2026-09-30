@@ -10,26 +10,30 @@ function RootLayoutContent() {
   const hasDownloadedRef = useRef(false);
 
   const inAuthGroup = segments.length === 0 || segments[0] === 'index';
+  // Detectar si ya estamos dentro del grupo correcto para no re-navegar
+  const inManagerTabs = segments[0] === '(manager-tabs)';
+  const inUserTabs    = segments[0] === '(tabs)';
 
   useEffect(() => {
     if (!isLoading && !isLoggingOut) {
       if (!user && !inAuthGroup) {
-        hasDownloadedRef.current = false; // reset al hacer logout
+        hasDownloadedRef.current = false;
         router.replace('/');
       } else if (user && inAuthGroup) {
         const roleUpper = user.role.toUpperCase();
         const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
-        
+
         console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
-        
-        if (isManager) {
+
+        // Solo navegar si aún no estamos en el grupo correcto
+        if (isManager && !inManagerTabs) {
           router.replace('/(manager-tabs)/index' as any);
-        } else {
+        } else if (!isManager && !inUserTabs) {
           router.replace('/(tabs)/index' as any);
         }
       }
     }
-  }, [user, isLoading, isLoggingOut, inAuthGroup]);
+  }, [user, isLoading, isLoggingOut, inAuthGroup, inManagerTabs, inUserTabs]);
 
   // Descarga offline en background al iniciar sesión (una sola vez por sesión)
   useEffect(() => {
