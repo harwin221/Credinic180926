@@ -1,4 +1,4 @@
-import { Stack, router, useSegments, useRootNavigationState } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { AlertProvider } from '../components/AlertProvider';
 import { useEffect, useRef } from 'react';
@@ -7,39 +7,43 @@ import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 function RootLayoutContent() {
   const { user, isLoading, isLoggingOut } = useAuth();
   const segments = useSegments() as string[];
-  const navigationState = useRootNavigationState();
   const hasDownloadedRef = useRef(false);
+  // Evita que el guardián navegue más de una vez por sesión al hacer login
+  const hasNavigatedRef  = useRef(false);
 
-  // navigationState?.key indica que el navigator ya está montado y listo.
-  // Sin esto, useSegments devuelve [] antes de que Expo Router haya resuelto
-  // la ruta inicial, causando el flash negro "Unmatched Route".
-  const navigationReady = !!navigationState?.key;
+  const inAuthGroup   = segments.length === 0 || segments[0] === 'index';
+  const inManagerTabs = segments[0] === '(manager-tabs)';
+  const inUserTabs    = segments[0] === '(tabs)';
 
-  const inAuthGroup    = segments.length === 0 || segments[0] === 'index';
-  const inManagerTabs  = segments[0] === '(manager-tabs)';
-  const inUserTabs     = segments[0] === '(tabs)';
+  // Resetear el flag de navegación al hacer logout
+  useEffect(() => {
+    if (!user) {
+      hasNavigatedRef.current = false;
+    }
+  }, [user]);
 
   useEffect(() => {
-    // Esperar a que el navigator esté listo y la sesión resuelta
-    if (!navigationReady || isLoading || isLoggingOut) return;
+    if (isLoading || isLoggingOut) return;
 
     if (!user && !inAuthGroup) {
       hasDownloadedRef.current = false;
+      hasNavigatedRef.current  = false;
       router.replace('/');
-    } else if (user && inAuthGroup) {
+    } else if (user && inAuthGroup && !hasNavigatedRef.current) {
+      // Solo navegar UNA vez al detectar que hay sesión activa en el grupo de auth
+      hasNavigatedRef.current = true;
       const roleUpper = user.role.toUpperCase();
       const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
 
       console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
 
-      // Solo navegar si aún no estamos en el grupo correcto
-      if (isManager && !inManagerTabs) {
+      if (isManager) {
         router.replace('/(manager-tabs)/index' as any);
-      } else if (!isManager && !inUserTabs) {
+      } else {
         router.replace('/(tabs)/index' as any);
       }
     }
-  }, [user, isLoading, isLoggingOut, navigationReady, inAuthGroup, inManagerTabs, inUserTabs]);
+  }, [user, isLoading, isLoggingOut, inAuthGroup]);
 
   // Descarga offline en background al iniciar sesión (una sola vez por sesión)
   useEffect(() => {
