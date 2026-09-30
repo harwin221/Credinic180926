@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
 import { useState, useCallback, useEffect } from 'react';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { sessionService } from '../services/session';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,21 +45,24 @@ export default function LoginScreen() {
             if (data.success) {
                 console.log('[LOGIN] Login exitoso, guardando sesión...', data.user.role);
                 AsyncStorage.setItem('@last_login_username', email.trim()).catch(() => {});
-                
-                // Persistimos los datos reales del usuario
-                // La navegación la maneja _layout.tsx al detectar el cambio de usuario
+
                 await login({
-                        id: String(data.user.id),
-                        fullName: data.user.name ?? data.user.fullName ?? data.user.username,
-                        username: data.user.username,
-                        email: data.user.email ?? null,
-                        role: data.user.role ?? 'AGENTE',
-                        sucursal: data.user.sucursal ?? null,
-                        sucursalName: data.user.sucursalName ?? null,
-                        token: data.token ?? null,
-                    });
-                // NO hacer router.replace aquí — _layout.tsx lo maneja al
-                // detectar user !== null, evitando el doble navigate y el flash negro.
+                    id: String(data.user.id),
+                    fullName: data.user.name ?? data.user.fullName ?? data.user.username,
+                    username: data.user.username,
+                    email: data.user.email ?? null,
+                    role: data.user.role ?? 'AGENTE',
+                    sucursal: data.user.sucursal ?? null,
+                    sucursalName: data.user.sucursalName ?? null,
+                    token: data.token ?? null,
+                });
+
+                // Navegar después de que el AuthContext termine de persistir la sesión
+                const roleUpper = (data.user.role || 'AGENTE').toUpperCase();
+                const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
+                const target = isManager ? '/(manager-tabs)/index' : '/(tabs)/index';
+                console.log('[LOGIN] Navegando a:', target);
+                router.replace(target as any);
             } else {
                 // Credenciales incorrectas, usuario inactivo, o rol no permitido
                 AlertHelper.alert('Acceso Denegado', data.message || 'Credenciales inválidas');

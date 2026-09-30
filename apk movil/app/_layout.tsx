@@ -1,68 +1,36 @@
-import { Stack, router, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { AlertProvider } from '../components/AlertProvider';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 
-// Flag a nivel de módulo — sobrevive re-mounts del componente
-let _hasNavigated = false;
-let _hasDownloaded = false;
+// Descarga offline — flag de módulo para que no se repita al re-montar
+let _offlineDownloaded = false;
 
 function RootLayoutContent() {
   const { user, isLoading, isLoggingOut } = useAuth();
-  const segments = useSegments() as string[];
 
-  const inAuthGroup = segments.length === 0 || segments[0] === 'index';
-
+  // Descarga offline en background una sola vez al iniciar sesión
   useEffect(() => {
-    if (isLoading || isLoggingOut) return;
-
-    if (!user) {
-      // Logout: resetear flags
-      _hasNavigated  = false;
-      _hasDownloaded = false;
-      if (!inAuthGroup) router.replace('/');
-      return;
-    }
-
-    // Usuario logueado en pantalla de auth y aún no navegamos
-    if (inAuthGroup && !_hasNavigated) {
-      _hasNavigated = true;
-      const roleUpper = user.role.toUpperCase();
-      const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
-
-      console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
-
-      // setTimeout de 1 frame para dejar que el navigator termine de montar
-      // antes de hacer el replace — evita el flash "Unmatched Route" en Expo Go
-      setTimeout(() => {
-        if (isManager) {
-          router.replace('/(manager-tabs)/index' as any);
-        } else {
-          router.replace('/(tabs)/index' as any);
-        }
-      }, 0);
-    }
-  }, [user, isLoading, isLoggingOut, inAuthGroup]);
-
-  // Descarga offline en background al iniciar sesión (una sola vez por sesión)
-  useEffect(() => {
-    if (user && !isLoading && !_hasDownloaded) {
-      _hasDownloaded = true;
+    if (user && !isLoading && !_offlineDownloaded) {
+      _offlineDownloaded = true;
       import('../services/sync-service').then(({ downloadOfflineData }) => {
         downloadOfflineData()
-          .then(r => console.log('[LAYOUT] Descarga offline inicial:', r.message))
-          .catch(e => console.warn('[LAYOUT] Error descarga offline inicial:', e));
+          .then(r => console.log('[LAYOUT] Descarga offline:', r.message))
+          .catch(e => console.warn('[LAYOUT] Error descarga offline:', e));
       });
+    }
+    if (!user) {
+      _offlineDownloaded = false;
     }
   }, [user, isLoading]);
 
   if (isLoading || isLoggingOut) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={isLoggingOut ? "#e11d48" : "#0ea5e9"} />
+        <ActivityIndicator size="large" color={isLoggingOut ? '#e11d48' : '#0ea5e9'} />
         <Text style={[styles.loadingText, isLoggingOut && { color: '#e11d48', fontWeight: 'bold' }]}>
-          {isLoggingOut ? "Cerrando sesión de forma segura..." : "Cargando sesión..."}
+          {isLoggingOut ? 'Cerrando sesión de forma segura...' : 'Cargando sesión...'}
         </Text>
       </View>
     );
