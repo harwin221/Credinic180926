@@ -4,34 +4,30 @@ import { AlertProvider } from '../components/AlertProvider';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 
+// Flag a nivel de módulo — sobrevive re-mounts del componente
+let _hasNavigated = false;
+let _hasDownloaded = false;
+
 function RootLayoutContent() {
   const { user, isLoading, isLoggingOut } = useAuth();
   const segments = useSegments() as string[];
-  const hasDownloadedRef = useRef(false);
-  // Evita que el guardián navegue más de una vez por sesión al hacer login
-  const hasNavigatedRef  = useRef(false);
 
-  const inAuthGroup   = segments.length === 0 || segments[0] === 'index';
-  const inManagerTabs = segments[0] === '(manager-tabs)';
-  const inUserTabs    = segments[0] === '(tabs)';
-
-  // Resetear el flag de navegación al hacer logout
-  useEffect(() => {
-    if (!user) {
-      hasNavigatedRef.current = false;
-    }
-  }, [user]);
+  const inAuthGroup = segments.length === 0 || segments[0] === 'index';
 
   useEffect(() => {
     if (isLoading || isLoggingOut) return;
 
-    if (!user && !inAuthGroup) {
-      hasDownloadedRef.current = false;
-      hasNavigatedRef.current  = false;
-      router.replace('/');
-    } else if (user && inAuthGroup && !hasNavigatedRef.current) {
-      // Solo navegar UNA vez al detectar que hay sesión activa en el grupo de auth
-      hasNavigatedRef.current = true;
+    if (!user) {
+      // Logout: resetear flags
+      _hasNavigated  = false;
+      _hasDownloaded = false;
+      if (!inAuthGroup) router.replace('/');
+      return;
+    }
+
+    // Usuario logueado en pantalla de auth y aún no navegamos
+    if (inAuthGroup && !_hasNavigated) {
+      _hasNavigated = true;
       const roleUpper = user.role.toUpperCase();
       const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
 
@@ -47,9 +43,8 @@ function RootLayoutContent() {
 
   // Descarga offline en background al iniciar sesión (una sola vez por sesión)
   useEffect(() => {
-    if (user && !isLoading && !hasDownloadedRef.current) {
-      hasDownloadedRef.current = true;
-      // No bloqueamos la UI — fire and forget
+    if (user && !isLoading && !_hasDownloaded) {
+      _hasDownloaded = true;
       import('../services/sync-service').then(({ downloadOfflineData }) => {
         downloadOfflineData()
           .then(r => console.log('[LAYOUT] Descarga offline inicial:', r.message))
