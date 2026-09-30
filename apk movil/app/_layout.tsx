@@ -33,11 +33,15 @@ function RootLayoutContent() {
 
       console.log('[LAYOUT] Usuario logueado, redirigiendo...', { role: user.role, isManager });
 
-      if (isManager) {
-        router.replace('/(manager-tabs)/index' as any);
-      } else {
-        router.replace('/(tabs)/index' as any);
-      }
+      // setTimeout de 1 frame para dejar que el navigator termine de montar
+      // antes de hacer el replace — evita el flash "Unmatched Route" en Expo Go
+      setTimeout(() => {
+        if (isManager) {
+          router.replace('/(manager-tabs)/index' as any);
+        } else {
+          router.replace('/(tabs)/index' as any);
+        }
+      }, 0);
     }
   }, [user, isLoading, isLoggingOut, inAuthGroup]);
 
