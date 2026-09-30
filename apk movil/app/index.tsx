@@ -60,7 +60,7 @@ export default function LoginScreen() {
                 // Navegar después de que el AuthContext termine de persistir la sesión
                 const roleUpper = (data.user.role || 'AGENTE').toUpperCase();
                 const isManager = ['GERENTE', 'ADMINISTRADOR', 'FINANZAS', 'ADMINISTRATIVO'].includes(roleUpper);
-                const target = isManager ? '/(manager-tabs)/index' : '/(tabs)/index';
+                const target = isManager ? '/(manager-tabs)' : '/(tabs)';
                 console.log('[LOGIN] Navegando a:', target);
                 router.replace(target as any);
             } else {
