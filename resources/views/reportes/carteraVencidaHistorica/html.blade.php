@@ -162,7 +162,11 @@
     {{-- ── Filtros aplicados ── --}}
     <div class="filters-bar">
         <strong>Filtros aplicados:</strong>
-        Gestor original: <strong>{{ $cobrador ? ($listaCobradores[encode(reset((array)$cobrador))] ?? 'Todos') : 'Todos' }}</strong>
+        @php
+            $cobradorIds = array_filter((array)$cobrador);
+            $primerCobrador = !empty($cobradorIds) ? ($listaCobradores[encode(reset($cobradorIds))] ?? 'Todos') : 'Todos';
+        @endphp
+        Gestor original: <strong>{{ $primerCobrador }}</strong>
         &nbsp;|&nbsp; Vencimiento desde: <strong>{{ $desde ?: '—' }}</strong>
         &nbsp;|&nbsp; Hasta: <strong>{{ $hasta ?: 'Hoy' }}</strong>
         &nbsp;|&nbsp;
