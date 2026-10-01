@@ -254,6 +254,9 @@ Route::middleware(['auth','adminMiddleware','accessTimeAdminMiddleware','checkUs
         Route::get('reportes/cuotasVencidas/html', 'cuotasVencidas')->name('reportes.cuotasVencidas.html');
         Route::get('reportes/prestamosVencidos/html', 'prestamosVencidos')->name('reportes.prestamosVencidos.html');
         Route::get('reportes/creditosVencidos/html', 'creditosVencidos')->name('reportes.creditosVencidos.html');
+        // Cartera Vencida Histórica (con trazabilidad de gestor original)
+        Route::get('reportes/carteraVencidaHistorica', 'carteraVencidaHistorica')->name('reportes.carteraVencidaHistorica.index');
+        Route::get('reportes/carteraVencidaHistorica/html', 'carteraVencidaHistorica')->name('reportes.carteraVencidaHistorica.html');
         Route::get('reportes/asignacionClientes/html', 'asignacionClientes')->name('reportes.asignacionClientes.html');
         Route::get('reportes/cobrosDia/html', 'cobrosDia')->name('reportes.cobrosDia.html');
         Route::get('reportes/cobranza/html', 'cobranza')->name('reportes.cobranza.html');

@@ -989,6 +989,15 @@ class reportesController extends Controller
 
         $cantidadTransferida = 0;
         foreach ($prestamosActivos as $prestamo) {
+            // Registrar historial ANTES de cambiar el agente_id
+            // Así queda foto del gestor original y el saldo en ese momento
+            \App\Models\PrestamoAgenteHistorialModel::registrar(
+                $prestamo,
+                $cobradorDestinoId,
+                Auth::id(),
+                $request->motivo ?? null
+            );
+
             $prestamo->agente_id = $cobradorDestinoId;
             $prestamo->save();
             $cantidadTransferida++;
@@ -1843,5 +1852,145 @@ class reportesController extends Controller
         }
 
         return view('reportes.carteraDiaria.cobranzaDiariaIndex', compact('listaCobradores'));
+    }
+
+    // ─── CARTERA VENCIDA HISTÓRICA ────────────────────────────────────────────
+    public function carteraVencidaHistorica(Request $request)
+    {
+        $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)
+            ->get()->pluck('admin_asignado_id')->toArray();
+
+        $listaCobradores = User::agente()->activo()
+            ->when($agentesAsignados, function ($q) use ($agentesAsignados) {
+                $q->whereIn('id', $agentesAsignados);
+            })
+            ->orderBy('nombres')->orderBy('apellidos')
+            ->get()->pluck('full_name', 'id_enc')->toArray();
+
+        $cobrador = $request->get('cobrador'); // puede ser array
+        $desde    = $request->get('desde');
+        $hasta    = $request->get('hasta');
+
+        if (!$request->hasAny(['cobrador', 'desde', 'hasta'])) {
+            return view('reportes.carteraVencidaHistorica.index', compact('listaCobradores'));
+        }
+
+        // ── Query principal ───────────────────────────────────────────────────
+        // Trae todos los créditos vencidos (estado 1 activo con plazo vencido, o estado 3 vencido)
+        // con su gestor ORIGINAL (primer registro del historial) y gestor ACTUAL (agente_id).
+        $prestamos = \DB::table('prestamos as p')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->leftJoin('users as ag_actual', 'ag_actual.id', '=', 'p.agente_id')
+            // Gestor original: el agente_anterior_id del primer registro del historial del préstamo.
+            // Si no tiene historial (nunca fue reasignado), el gestor original = gestor actual.
+            ->leftJoin(\DB::raw('(
+                SELECT h1.prestamo_id, h1.agente_anterior_id, h1.saldo_al_reasignar
+                FROM prestamos_agente_historial h1
+                INNER JOIN (
+                    SELECT prestamo_id, MIN(id) as primer_id
+                    FROM prestamos_agente_historial
+                    GROUP BY prestamo_id
+                ) h2 ON h1.id = h2.primer_id
+            ) as historial_origen'), 'historial_origen.prestamo_id', '=', 'p.id')
+            ->leftJoin('users as ag_original', 'ag_original.id', '=', 'historial_origen.agente_anterior_id')
+            // Fecha de vencimiento: última cuota del plan de pagos
+            ->leftJoin(\DB::raw('(
+                SELECT prestamo_id, MAX(fecha_cuota) as fecha_vencimiento
+                FROM prestamo_coutas
+                GROUP BY prestamo_id
+            ) as vc'), 'vc.prestamo_id', '=', 'p.id')
+            // Saldo actual: total cuotas - total abonado
+            ->leftJoin(\DB::raw('(
+                SELECT pc.prestamo_id,
+                       SUM(pc.monto_cuota) as total_cuotas
+                FROM prestamo_coutas pc
+                WHERE pc.estado != 4
+                GROUP BY pc.prestamo_id
+            ) as sq'), 'sq.prestamo_id', '=', 'p.id')
+            ->leftJoin(\DB::raw('(
+                SELECT pc2.prestamo_id,
+                       SUM(pca.monto_abono) as total_abonado
+                FROM prestamo_cuota_abono pca
+                JOIN prestamo_coutas pc2 ON pc2.id = pca.prestamo_cuota_id
+                WHERE pca.estado = 1
+                GROUP BY pc2.prestamo_id
+            ) as sa'), 'sa.prestamo_id', '=', 'p.id')
+            ->select(
+                'p.id',
+                'p.consecutivo',
+                'p.monto_prestamo',
+                'p.monto_financiado',
+                'p.fecha_desembolso',
+                'p.estado',
+                \DB::raw("CONCAT(u.nombres, ' ', u.apellidos) as cliente_nombre"),
+                // Gestor original: si hay historial usa el anterior, si no usa el actual
+                \DB::raw("COALESCE(
+                    CONCAT(ag_original.nombres, ' ', ag_original.apellidos),
+                    CONCAT(ag_actual.nombres, ' ', ag_actual.apellidos)
+                ) as gestor_original"),
+                \DB::raw("CONCAT(ag_actual.nombres, ' ', ag_actual.apellidos) as gestor_actual"),
+                \DB::raw("COALESCE(p.agente_id, 0) as agente_actual_id"),
+                \DB::raw("COALESCE(historial_origen.agente_anterior_id, p.agente_id) as agente_original_id"),
+                'vc.fecha_vencimiento',
+                // Saldo al vencer: si fue reasignado, usamos saldo_al_reasignar del historial;
+                // si no, usamos monto_financiado como referencia inicial
+                \DB::raw("COALESCE(historial_origen.saldo_al_reasignar, p.monto_financiado) as saldo_al_vencer"),
+                \DB::raw("GREATEST(0, COALESCE(sq.total_cuotas, 0) - COALESCE(sa.total_abonado, 0)) as saldo_actual"),
+                \DB::raw("COALESCE(historial_origen.saldo_al_reasignar, p.monto_financiado)
+                          - GREATEST(0, COALESCE(sq.total_cuotas, 0) - COALESCE(sa.total_abonado, 0))
+                          as diferencia_cobrada"),
+                \DB::raw("DATEDIFF(CURDATE(), vc.fecha_vencimiento) as dias_vencido"),
+                \DB::raw("(CASE WHEN p.moneda_prestamo = 1 THEN 'C$' ELSE 'U$' END) as moneda")
+            )
+            ->whereIn('p.estado', [1, 3])
+            ->whereNull('p.deleted_at')
+            ->where('p.desembolsado', 1)
+            // Solo los que tienen la última cuota ya vencida
+            ->whereRaw('vc.fecha_vencimiento <= CURDATE()')
+            // Solo los que tienen saldo pendiente real
+            ->whereRaw('GREATEST(0, COALESCE(sq.total_cuotas, 0) - COALESCE(sa.total_abonado, 0)) > 0.5')
+            ->when($cobrador, function ($q) use ($cobrador) {
+                // Filtrar por gestor ORIGINAL (puede ser el anterior o el actual si no tiene historial)
+                $ids = array_map('decode', (array)$cobrador);
+                $q->where(function ($sub) use ($ids) {
+                    $sub->whereIn('historial_origen.agente_anterior_id', $ids)
+                        ->orWhere(function ($sub2) use ($ids) {
+                            $sub2->whereNull('historial_origen.agente_anterior_id')
+                                 ->whereIn('p.agente_id', $ids);
+                        });
+                });
+            })
+            ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
+                $q->whereIn('p.agente_id', $agentesAsignados);
+            })
+            ->when($desde && $hasta, function ($q) use ($desde, $hasta) {
+                $q->whereBetween('vc.fecha_vencimiento', [$desde, $hasta]);
+            })
+            ->orderByRaw("COALESCE(ag_original.apellidos, ag_actual.apellidos)")
+            ->orderByRaw("COALESCE(ag_original.nombres, ag_actual.nombres)")
+            ->orderBy('u.apellidos')
+            ->orderBy('u.nombres')
+            ->get();
+
+        // Agrupar por gestor original para el HTML
+        $agrupado = $prestamos->groupBy('gestor_original');
+
+        // Totales generales
+        $totales = [
+            'saldo_al_vencer'   => $prestamos->sum('saldo_al_vencer'),
+            'saldo_actual'      => $prestamos->sum('saldo_actual'),
+            'diferencia_cobrada'=> $prestamos->sum('diferencia_cobrada'),
+            'cantidad'          => $prestamos->count(),
+        ];
+
+        if ($request->get('excel')) {
+            return Excel::download(
+                new \App\Exports\carteraVencidaHistoricaExport($prestamos),
+                'Cartera_Vencida_Historica_' . date('Y-m-d') . '.xlsx'
+            );
+        }
+
+        return view('reportes.carteraVencidaHistorica.html',
+            compact('agrupado', 'totales', 'listaCobradores', 'cobrador', 'desde', 'hasta'));
     }
 }
