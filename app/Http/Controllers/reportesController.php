@@ -1950,15 +1950,18 @@ class reportesController extends Controller
             // Solo los que tienen saldo pendiente real
             ->whereRaw('GREATEST(0, COALESCE(sq.total_cuotas, 0) - COALESCE(sa.total_abonado, 0)) > 0.5')
             ->when($cobrador, function ($q) use ($cobrador) {
-                // Filtrar por gestor ORIGINAL (puede ser el anterior o el actual si no tiene historial)
-                $ids = array_map('decode', (array)$cobrador);
-                $q->where(function ($sub) use ($ids) {
-                    $sub->whereIn('historial_origen.agente_anterior_id', $ids)
-                        ->orWhere(function ($sub2) use ($ids) {
-                            $sub2->whereNull('historial_origen.agente_anterior_id')
-                                 ->whereIn('p.agente_id', $ids);
-                        });
-                });
+                $ids = array_filter(array_map(function($c) {
+                    return $c ? decode($c) : null;
+                }, (array)$cobrador));
+                if (!empty($ids)) {
+                    $q->where(function ($sub) use ($ids) {
+                        $sub->whereIn('historial_origen.agente_anterior_id', $ids)
+                            ->orWhere(function ($sub2) use ($ids) {
+                                $sub2->whereNull('historial_origen.agente_anterior_id')
+                                     ->whereIn('p.agente_id', $ids);
+                            });
+                    });
+                }
             })
             ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
                 $q->whereIn('p.agente_id', $agentesAsignados);

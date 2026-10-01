@@ -221,6 +221,19 @@
             </div>
         @endcan
 
+        @can('Cartera Vencida Histórica (17)')
+            <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-3">
+                <div class="report-card" data-bs-toggle="modal" data-bs-target="#modalCarteraVencidaHistorica" style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);">
+                    <div class="report-card-body">
+                        <div class="report-icon">
+                            <i class="fas fa-history"></i>
+                        </div>
+                        <h5 class="report-title">Cartera Vencida Histórica</h5>
+                    </div>
+                </div>
+            </div>
+        @endcan
+
         <!-- Reporte Colocación vs Recuperación -->
         <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-3">
             <div class="report-card" data-bs-toggle="modal" data-bs-target="#modalColocacionRecuperacion" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
@@ -252,6 +265,7 @@
     @include('reportes.modals.modalCarteraDiaria')
     @include('reportes.modals.modalCreditosVencidos')
     @include('reportes.modals.modalColocacionVsRecuperacion')
+    @include('reportes.modals.modalCarteraVencidaHistorica')
 
 @endsection
 
