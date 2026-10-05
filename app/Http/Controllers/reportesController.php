@@ -1949,7 +1949,9 @@ class reportesController extends Controller
             return $p;
         });
 
-        $agrupado = $prestamosResult->groupBy('vendedor_nombre')->sortKeys();
+        $agrupado = $prestamosResult->groupBy('vendedor_nombre')
+            ->sortKeys()
+            ->map(fn($grupo) => $grupo->sortBy('cliente_nombre')->values());
         $totales  = [
             'cantidad'       => $prestamosResult->count(),
             'monto_colocado' => $prestamosResult->sum('monto_colocado'),
