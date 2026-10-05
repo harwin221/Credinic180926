@@ -1,34 +1,36 @@
 <!-- Modal Cartera Vencida Histórica -->
-<div class="modal fade" id="modalCarteraVencidaHistorica" tabindex="-1" aria-labelledby="modalCarteraVencidaHistoricaLabel" aria-hidden="true">
+<div class="modal fade" id="modalCarteraVencidaHistorica" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="modalCarteraVencidaHistoricaLabel">
-                    <i class="fas fa-history"></i> Cartera Vencida Histórica
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title"><i class="fas fa-history"></i> Cartera Vencida Histórica</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            {{html()->form('GET', route('reportes.carteraVencidaHistorica.html'))->id('formCarteraVencidaHistorica')->open()}}
+            {{html()->form('GET', route('reportes.carteraVencidaHistorica.html'))->open()}}
             <div class="modal-body">
                 <p class="text-muted small mb-3">
                     <i class="fas fa-info-circle text-primary"></i>
-                    Muestra créditos vencidos con el <strong>gestor original</strong> que los tenía asignados,
-                    saldo al momento del vencimiento/reasignación y saldo actual. Ideal para cálculo de comisiones.
+                    Créditos cuyo plazo ya venció con saldo pendiente, agrupados por <strong>vendedor original</strong>.
+                    Saldo inicio / cobro del período / saldo final.
                 </p>
-                <div class="row">
-                    <div class="col-12 col-md-6 mb-3">
-                        <label><strong>Vencimiento desde:</strong></label>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label><strong>Período desde:</strong></label>
                         <input type="date" name="desde" class="form-control">
                     </div>
-                    <div class="col-12 col-md-6 mb-3">
-                        <label><strong>Vencimiento hasta:</strong></label>
+                    <div class="col-md-6">
+                        <label><strong>Período hasta:</strong></label>
                         <input type="date" name="hasta" class="form-control" value="{{ date('Y-m-d') }}">
                     </div>
-                    <div class="col-12 mb-3">
-                        <label><strong>Gestor (original):</strong></label>
-                        {{ html()->select('cobrador[]', ['' => 'Todos los gestores'] + (isset($listaCobradores) ? $listaCobradores : []), null)
-                            ->class('form-control select2')
-                            ->style('width: 100%') }}
+                    <div class="col-md-6">
+                        <label><strong>Vendedor (gestor original):</strong></label>
+                        {{ html()->select('vendedor[]', ['' => 'Todos'] + (isset($listaCobradores) ? $listaCobradores : []), null)
+                            ->class('form-control select2')->style('width:100%') }}
+                    </div>
+                    <div class="col-md-6">
+                        <label><strong>Cobrador actual:</strong></label>
+                        {{ html()->select('cobrador[]', ['' => 'Todos'] + (isset($listaCobradores) ? $listaCobradores : []), null)
+                            ->class('form-control select2')->style('width:100%') }}
                     </div>
                 </div>
             </div>
