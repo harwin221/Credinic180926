@@ -164,7 +164,7 @@ class prestamosController extends Controller
     public function show(string $id)
     {
         $prestamo = prestamosModel::where('id', decode($id))->first();
-        $vendedores = User::whereIn('tipo_usuario', [2, 4, 5])->where('estado', 1)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $vendedores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         $cobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         $admins = User::whereIn('tipo_usuario', [1, 2, 4, 5])->where('estado', 1)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 

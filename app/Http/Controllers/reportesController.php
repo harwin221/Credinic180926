@@ -48,7 +48,7 @@ class reportesController extends Controller
             ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
             
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $listaVendedores = User::whereIn('tipo_usuario', [2, 4, 5])->where('estado', 1)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaVendedores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         
         return view('reportes.index', compact('listaCobradores', 'listaClientes', 'listaVendedores'));
     }
@@ -79,7 +79,7 @@ class reportesController extends Controller
             ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $listaVendedores = User::whereIn('tipo_usuario', [2, 4, 5])->where('estado', 1)->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaVendedores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $query = \DB::table('prestamos as p')
             ->join('users as u', 'p.user_id', '=', 'u.id')
