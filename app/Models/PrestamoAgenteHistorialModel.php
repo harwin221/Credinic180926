@@ -17,6 +17,7 @@ class PrestamoAgenteHistorialModel extends Model
         'agente_nuevo_id',
         'reasignado_por',
         'saldo_al_reasignar',
+        'saldo_vencido_al_reasignar',
         'fecha_reasignacion',
         'motivo',
     ];
@@ -24,6 +25,7 @@ class PrestamoAgenteHistorialModel extends Model
     protected $casts = [
         'fecha_reasignacion' => 'date',
         'saldo_al_reasignar' => 'decimal:2',
+        'saldo_vencido_al_reasignar' => 'decimal:2',
     ];
 
     // ─── Relaciones ───────────────────────────────────────────────────────────
@@ -71,7 +73,21 @@ class PrestamoAgenteHistorialModel extends Model
 
         $saldoPendiente = max(0, $totalCuotas - $totalAbonado);
 
+        // Saldo VENCIDO: solo aplica si el plazo del préstamo ya terminó
+        // (MAX(fecha_cuota) < hoy). Si aún hay plazo vigente el crédito está
+        // en MORA, no vencido, y no penaliza al agente.
+        $saldoVencido = 0.0;
+        $fechaVencimiento = \DB::table('prestamo_coutas')
+            ->where('prestamo_id', $prestamo->id)
+            ->max('fecha_cuota');
+
+        if ($fechaVencimiento && \Carbon\Carbon::parse($fechaVencimiento)->startOfDay()->lt(now()->startOfDay())) {
+            // Todo el plan de pagos ya está vencido, menos lo abonado a la fecha de hoy
+            $saldoVencido = max(0, $totalCuotas - $totalAbonado);
+        }
+
         return self::create([
+            'saldo_vencido_al_reasignar' => $saldoVencido,
             'prestamo_id'        => $prestamo->id,
             'agente_anterior_id' => $prestamo->agente_id,
             'agente_nuevo_id'    => $agenteNuevoId,

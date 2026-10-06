@@ -25,6 +25,9 @@ class carteraVencidaHistoricaExport implements
     WithTitle,
     WithEvents
 {
+    /** Total de columnas del reporte; los subtotales se arman con este total */
+    const COLS = 14;
+
     private $data;
 
     public function __construct($data)
@@ -44,34 +47,29 @@ class carteraVencidaHistoricaExport implements
 
         $gestorActual = null;
 
-        // Subtotales por gestor
-        $subVencer    = 0;
-        $subActual    = 0;
-        $subDif       = 0;
-        $subCantidad  = 0;
+        // Subtotales por agente
+        $subInicio  = 0;
+        $subCobrado = 0;
+        $subCierre  = 0;
+        $subCantidad = 0;
 
         foreach ($this->data as $p) {
-            // Fila separadora de gestor
-            if ($gestorActual !== $p->gestor_original) {
-                // Si ya había un gestor anterior, insertar subtotal
+            // Fila separadora de agente
+            if ($gestorActual !== $p->agente_origen) {
+                // Si ya había un agente anterior, insertar subtotal
                 if ($gestorActual !== null) {
                     $rows[] = [
                         '', '', "SUBTOTAL {$gestorActual} ({$subCantidad} créditos)",
-                        '', '', '', '', '', '',
-                        number_format($subVencer, 2),
-                        number_format($subActual, 2),
-                        number_format($subDif, 2),
+                        '', '', '', '', '', '', '', '', '', '',
+                        $this->veredicto($subCierre - $subInicio),
                     ];
-                    $rows[] = array_fill(0, 12, ''); // fila en blanco
-                    $subVencer = $subActual = $subDif = $subCantidad = 0;
+                    $rows[] = array_fill(0, self::COLS, ''); // fila en blanco
+                    $subInicio = $subCobrado = $subCierre = $subCantidad = 0;
                 }
 
-                // Fila de cabecera del gestor
-                $rows[] = [
-                    "GESTOR ORIGINAL: {$p->gestor_original}",
-                    '', '', '', '', '', '', '', '', '', '', '',
-                ];
-                $gestorActual = $p->gestor_original;
+                // Fila de cabecera del agente
+                $rows[] = array_merge(["AGENTE: {$p->agente_origen}"], array_fill(0, self::COLS - 1, ''));
+                $gestorActual = $p->agente_origen;
                 $num = 1;
             }
 
@@ -82,8 +80,9 @@ class carteraVencidaHistoricaExport implements
                 $num++,
                 $p->consecutivo,
                 $p->cliente_nombre,
-                $p->gestor_original,
-                $p->gestor_actual,
+                $p->agente_origen_nombre,
+                $p->agente_actual_nombre . ($p->agente_reasignado ? ' (reasignado)' : ''),
+                number_format((float)$p->monto_colocado, 2),
                 $p->fecha_desembolso
                     ? Carbon::parse($p->fecha_desembolso)->format('d/m/Y')
                     : 'N/A',
@@ -92,14 +91,15 @@ class carteraVencidaHistoricaExport implements
                     : 'N/A',
                 $dias,
                 $clasif,
-                number_format((float)$p->saldo_al_vencer, 2),
-                number_format((float)$p->saldo_actual, 2),
-                number_format((float)$p->diferencia_cobrada, 2),
+                number_format((float)$p->vencido_inicio, 2),
+                number_format((float)$p->cobrado_periodo, 2),
+                number_format((float)$p->vencido_cierre, 2),
+                $this->veredicto((float)$p->diferencia),
             ];
 
-            $subVencer   += (float)$p->saldo_al_vencer;
-            $subActual   += (float)$p->saldo_actual;
-            $subDif      += (float)$p->diferencia_cobrada;
+            $subInicio   += (float)$p->vencido_inicio;
+            $subCobrado  += (float)$p->cobrado_periodo;
+            $subCierre   += (float)$p->vencido_cierre;
             $subCantidad++;
         }
 
@@ -107,29 +107,42 @@ class carteraVencidaHistoricaExport implements
         if ($gestorActual !== null && $subCantidad > 0) {
             $rows[] = [
                 '', '', "SUBTOTAL {$gestorActual} ({$subCantidad} créditos)",
-                '', '', '', '', '', '',
-                number_format($subVencer, 2),
-                number_format($subActual, 2),
-                number_format($subDif, 2),
+                '', '', '', '', '', '', '', '', '', '',
+                $this->veredicto($subCierre - $subInicio),
             ];
-            $rows[] = array_fill(0, 12, '');
+            $rows[] = array_fill(0, self::COLS, '');
         }
 
         // Fila de total general
-        $totalVencer = $this->data->sum('saldo_al_vencer');
-        $totalActual = $this->data->sum('saldo_actual');
-        $totalDif    = $this->data->sum('diferencia_cobrada');
-        $totalCant   = $this->data->count();
+        $totalInicio  = $this->data->sum('vencido_inicio');
+        $totalCobrado = $this->data->sum('cobrado_periodo');
+        $totalCierre  = $this->data->sum('vencido_cierre');
+        $totalCant    = $this->data->count();
 
         $rows[] = [
             '', '', "TOTAL GENERAL ({$totalCant} créditos)",
-            '', '', '', '', '', '',
-            number_format($totalVencer, 2),
-            number_format($totalActual, 2),
-            number_format($totalDif, 2),
+            '', '', '', '', '', '', '', '', '', '',
+            $this->veredicto($totalCierre - $totalInicio),
+        ];
+        $rows[] = array_fill(0, self::COLS, '');
+        $rows[] = [
+            '', '', 'TOTALES', '', '', '', '', '', '',
+            '',
+            number_format($totalInicio, 2),
+            number_format($totalCobrado, 2),
+            number_format($totalCierre, 2),
+            '',
         ];
 
         return new Collection($rows);
+    }
+
+    /** Etiqueta de veredicto según si el vencido bajó, subió o quedó igual */
+    private function veredicto(float $dif): string
+    {
+        if ($dif < 0) return 'BAJÓ ' . number_format(abs($dif), 2);
+        if ($dif > 0) return 'SUBIÓ ' . number_format($dif, 2);
+        return 'SIN CAMBIO';
     }
 
     public function headings(): array
@@ -138,15 +151,17 @@ class carteraVencidaHistoricaExport implements
             '#',
             'N° Crédito',
             'Cliente',
-            'Gestor Original',
-            'Gestor Actual',
+            'Agente con el Crédito',
+            'Agente Actual',
+            'Monto Colocado (C$)',
             'Fecha Desembolso',
             'Fecha Vencimiento',
             'Días Vencido',
-            'Clasificación',
-            'Saldo al Vencer (C$)',
-            'Saldo Actual (C$)',
-            'Diferencia Cobrada (C$)',
+            'Clasif.',
+            'Vencido Inicio (C$)',
+            'Cobrado Período (C$)',
+            'Vencido Cierre (C$)',
+            'Diferencia',
         ];
     }
 
@@ -175,9 +190,9 @@ class carteraVencidaHistoricaExport implements
                     $cellC = $sheet->getCell("C{$row}")->getValue();
 
                     // Fila de cabecera de gestor
-                    if (is_string($cellA) && str_starts_with($cellA, 'GESTOR ORIGINAL:')) {
-                        $sheet->mergeCells("A{$row}:L{$row}");
-                        $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
+                    if (is_string($cellA) && str_starts_with($cellA, 'AGENTE:')) {
+                        $sheet->mergeCells("A{$row}:N{$row}");
+                        $sheet->getStyle("A{$row}:N{$row}")->applyFromArray([
                             'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 11],
                             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF2D3748']],
                             'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],
@@ -187,7 +202,7 @@ class carteraVencidaHistoricaExport implements
 
                     // Fila de subtotal
                     if (is_string($cellC) && str_starts_with($cellC, 'SUBTOTAL')) {
-                        $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
+                        $sheet->getStyle("A{$row}:N{$row}")->applyFromArray([
                             'font' => ['bold' => true, 'color' => ['argb' => 'FF1A365D']],
                             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFEBF8FF']],
                             'borders' => ['top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['argb' => 'FF2B6CB0']]],
@@ -195,9 +210,18 @@ class carteraVencidaHistoricaExport implements
                         continue;
                     }
 
+                    // Fila de totales al pie
+                    if (is_string($cellC) && $cellC === 'TOTALES') {
+                        $sheet->getStyle("A{$row}:N{$row}")->applyFromArray([
+                            'font' => ['bold' => true, 'color' => ['argb' => 'FF1A365D']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFEDF2F7']],
+                        ]);
+                        continue;
+                    }
+
                     // Fila de total general
                     if (is_string($cellC) && str_starts_with($cellC, 'TOTAL GENERAL')) {
-                        $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
+                        $sheet->getStyle("A{$row}:N{$row}")->applyFromArray([
                             'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 12],
                             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF1A1A2E']],
                             'borders' => ['top' => ['borderStyle' => Border::BORDER_THICK, 'color' => ['argb' => 'FFFFFFFF']]],
@@ -208,7 +232,7 @@ class carteraVencidaHistoricaExport implements
                     // Filas de datos normales — alternar color
                     if (is_numeric($cellA) || $cellA === '') {
                         $bgColor = ($row % 2 === 0) ? 'FFF7FAFC' : 'FFFFFFFF';
-                        $sheet->getStyle("A{$row}:L{$row}")->applyFromArray([
+                        $sheet->getStyle("A{$row}:N{$row}")->applyFromArray([
                             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
                             'borders' => [
                                 'allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFE2E8F0']],
@@ -216,18 +240,18 @@ class carteraVencidaHistoricaExport implements
                         ]);
 
                         // Columnas numéricas alineadas a la derecha
-                        $sheet->getStyle("J{$row}:L{$row}")->getAlignment()
+                        $sheet->getStyle("K{$row}:N{$row}")->getAlignment()
                             ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-                        $sheet->getStyle("H{$row}")->getAlignment()
-                            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
                         $sheet->getStyle("I{$row}")->getAlignment()
+                            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        $sheet->getStyle("J{$row}")->getAlignment()
                             ->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     }
                 }
 
                 // Encabezado título arriba del reporte
                 $sheet->insertNewRowBefore(1, 2);
-                $sheet->mergeCells('A1:L1');
+                $sheet->mergeCells('A1:N1');
                 $sheet->setCellValue('A1', 'CREDINICA — REPORTE DE CARTERA VENCIDA HISTÓRICA — Generado: ' . now()->format('d/m/Y H:i'));
                 $sheet->getStyle('A1')->applyFromArray([
                     'font'      => ['bold' => true, 'size' => 13, 'color' => ['argb' => 'FFFFFFFF']],
