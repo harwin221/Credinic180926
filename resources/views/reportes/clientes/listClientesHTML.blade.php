@@ -35,10 +35,24 @@
 
     <div class="report-wrapper">
         <div class="rpt-header">
-            <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
-            <div class="co-name">CrediNica</div>
-            <div class="rpt-title">Lista de Desembolsos</div>
-            <div class="rpt-meta">Generado: {{ date('d/m/Y') }} &nbsp;|&nbsp; {{ date('h:i A') }}</div>
+            <div class="logo-col">
+                <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
+                <span class="tagline">Contigo cuando lo necesitas</span>
+            </div>
+            <div class="title-col">
+                <div class="co-name">Credi<span>Nica</span></div>
+                <div class="rpt-title">Lista de Desembolsos</div>
+                <div class="rpt-meta">Generado: {{ date('d/m/Y') }} &nbsp;|&nbsp; {{ date('h:i A') }}</div>
+            </div>
+            <div class="info-col">
+                @if($inicioSel && $finSel)
+                    <strong>Período:</strong><br>
+                    {{ fecha_d_m_Y($inicioSel) }}<br>
+                    al {{ fecha_d_m_Y($finSel) }}
+                @else
+                    <strong>Fecha:</strong><br>{{ date('d/m/Y') }}
+                @endif
+            </div>
         </div>
 
         @php

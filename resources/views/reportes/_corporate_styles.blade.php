@@ -6,12 +6,74 @@
     .report-wrapper { max-width: 1100px; margin: 0 auto; background: #fff; border: 1px solid #d0d5dd; }
     .report-wrapper.wide { max-width: 1300px; }
 
-    /* ─── ENCABEZADO ─── */
-    .rpt-header { text-align: center; padding: 24px 40px 16px; border-bottom: 3px double #1a1a2e; }
-    .rpt-header img { height: 40px; width: auto; display: block; margin: 0 auto 8px; }
-    .rpt-header .co-name { font-size: 15px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #1a1a2e; }
-    .rpt-header .rpt-title { font-size: 12px; font-weight: 600; color: #4a5568; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.8px; }
-    .rpt-header .rpt-meta { font-size: 10px; color: #718096; margin-top: 5px; }
+    /* ─── ENCABEZADO CORPORATIVO ─── */
+    .rpt-header {
+        display: flex;
+        align-items: center;
+        padding: 18px 32px 14px;
+        border-bottom: 3px solid #1f9cb5;
+        background: #fff;
+        gap: 20px;
+    }
+    .rpt-header .logo-col {
+        flex-shrink: 0;
+        width: 110px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .rpt-header .logo-col img {
+        height: 52px;
+        width: auto;
+    }
+    .rpt-header .logo-col .tagline {
+        font-size: 8px;
+        color: #94a3b8;
+        margin-top: 3px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    .rpt-header .title-col {
+        flex: 1;
+        text-align: center;
+    }
+    .rpt-header .co-name {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #1a1a2e;
+        line-height: 1;
+    }
+    .rpt-header .co-name span { color: #1f9cb5; }
+    .rpt-header .rpt-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 5px;
+        margin-top: 6px;
+    }
+    .rpt-header .rpt-meta {
+        font-size: 10px;
+        color: #94a3b8;
+        margin-top: 4px;
+    }
+    .rpt-header .info-col {
+        flex-shrink: 0;
+        width: 150px;
+        text-align: right;
+        font-size: 10px;
+        color: #64748b;
+        line-height: 1.6;
+    }
+    .rpt-header .info-col strong {
+        color: #1a1a2e;
+        font-weight: 700;
+    }
 
     /* ─── BARRA FILTROS ─── */
     .filters-bar { display: flex; justify-content: center; flex-wrap: wrap; gap: 30px; padding: 9px 40px; background: #f7f8fa; border-bottom: 1px solid #e2e8f0; font-size: 11px; color: #4a5568; }

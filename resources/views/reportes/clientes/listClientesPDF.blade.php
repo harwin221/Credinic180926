@@ -22,8 +22,8 @@
         .header {
             width: 100%;
             margin-bottom: 15px;
-            border-bottom: 2px solid #1f9cb5;
-            padding-bottom: 10px;
+            border-bottom: 3px solid #1f9cb5;
+            padding-bottom: 12px;
         }
         
         .header-content {
@@ -33,12 +33,12 @@
         
         .logo-section {
             display: table-cell;
-            width: 150px;
+            width: 140px;
             vertical-align: middle;
         }
         
         .logo-section img {
-            width: 140px;
+            width: 120px;
             height: auto;
         }
         
@@ -49,9 +49,11 @@
         }
         
         .title-section h1 {
-            font-size: 18px;
-            color: #1f9cb5;
-            margin-bottom: 5px;
+            font-size: 22px;
+            font-weight: 800;
+            color: #1a1a2e;
+            letter-spacing: 3px;
+            margin-bottom: 0;
         }
         
         .title-section p {
@@ -192,10 +194,26 @@
         <div class="header-content">
             <div class="logo-section">
                 <img src="{{public_path('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
+                <div style="font-size:7px; color:#94a3b8; margin-top:3px; letter-spacing:0.5px; text-transform:uppercase;">Contigo cuando lo necesitas</div>
             </div>
             <div class="title-section">
-                <h1>LISTA DE DESEMBOLSOS</h1>
-                <p>Reporte de Préstamos Activos</p>
+                <h1>CREDINICA</h1>
+                <p style="font-size:11px; font-weight:700; color:#1f9cb5; letter-spacing:1px; text-transform:uppercase; margin-top:4px;">LISTA DE DESEMBOLSOS</p>
+                <p style="font-size:8px; color:#718096; margin-top:3px;">
+                    Generado: {{ date('d/m/Y') }} | {{ date('h:i A') }}
+                    @if(request('fecha_inicio') && request('fecha_fin'))
+                        &nbsp;|&nbsp; Período: {{ fecha_d_m_Y(request('fecha_inicio')) }} al {{ fecha_d_m_Y(request('fecha_fin')) }}
+                    @endif
+                </p>
+            </div>
+            <div style="display:table-cell; width:120px; vertical-align:middle; text-align:right; font-size:8px; color:#4a5568; line-height:1.7;">
+                @if(request('estado') == 1)
+                    <span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:3px; font-weight:700; font-size:8px;">ACTIVOS</span>
+                @elseif(request('estado') == 2)
+                    <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:3px; font-weight:700; font-size:8px;">CANCELADOS</span>
+                @else
+                    <span style="background:#f0f9ff; color:#0369a1; padding:2px 6px; border-radius:3px; font-weight:700; font-size:8px;">TODOS</span>
+                @endif
             </div>
         </div>
     </div>
