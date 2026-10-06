@@ -79,6 +79,19 @@
                 $grandTotalPrestamos += $cantidadPrestamos;
             @endphp
 
+            {{-- Espacio entre grupos (excepto el primero) --}}
+            @if(!$loop->first)
+                <div style="height:16px; background:#f8fafc; border-top:1px solid #e2e8f0;"></div>
+            @endif
+                    $subtotalInteres += ($p->monto_financiado - $p->monto_prestamo);
+                    $subtotalGeneral += $p->monto_financiado;
+                }
+                $grandTotalMonto     += $subtotalMonto;
+                $grandTotalInteres   += $subtotalInteres;
+                $grandTotalGeneral   += $subtotalGeneral;
+                $grandTotalPrestamos += $cantidadPrestamos;
+            @endphp
+
             <div class="section-title">Cobrador: {{ strtoupper($cobradorNombre) }}</div>
             <table class="data-table">
                 <thead>
@@ -130,17 +143,27 @@
         @endforelse
 
         @if($prestamosAgrupados->count() > 0)
-        <table class="data-table" style="margin-top:4px;">
-            <tbody>
-                <tr class="row-grand-total">
-                    <td colspan="3" class="text-right">TOTAL GENERAL &mdash; {{ $grandTotalPrestamos }} préstamo{{ $grandTotalPrestamos != 1 ? 's' : '' }}</td>
-                    <td class="text-right num">C$ {{ number_format($grandTotalMonto, 2) }}</td>
-                    <td class="text-right num">C$ {{ number_format($grandTotalInteres, 2) }}</td>
-                    <td class="text-right num">C$ {{ number_format($grandTotalGeneral, 2) }}</td>
-                    <td colspan="5"></td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="grand-total-block">
+            <div class="gt-title">Montos Totales de los Desembolsos</div>
+            <div class="gt-grid">
+                <div class="gt-item">
+                    <div class="gt-label">Total Préstamos</div>
+                    <div class="gt-value dark">{{ $grandTotalPrestamos }}</div>
+                </div>
+                <div class="gt-item">
+                    <div class="gt-label">Total Monto</div>
+                    <div class="gt-value">C$ {{ number_format($grandTotalMonto, 2) }}</div>
+                </div>
+                <div class="gt-item">
+                    <div class="gt-label">Total Interés</div>
+                    <div class="gt-value">C$ {{ number_format($grandTotalInteres, 2) }}</div>
+                </div>
+                <div class="gt-item">
+                    <div class="gt-label">Total General (C+I)</div>
+                    <div class="gt-value dark">C$ {{ number_format($grandTotalGeneral, 2) }}</div>
+                </div>
+            </div>
+        </div>
         @endif
 
         <div class="rpt-footer">Documento generado por CrediNica &mdash; {{ date('d/m/Y h:i A') }} &mdash; Uso interno exclusivo</div>

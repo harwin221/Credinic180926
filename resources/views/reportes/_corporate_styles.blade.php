@@ -80,9 +80,20 @@
     .filters-bar span { font-weight: 600; color: #1a1a2e; }
 
     /* ─── SECCIÓN COBRADOR ─── */
-    .section-title { background: #1a1a2e; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 7px 16px; margin: 0; }
-    .section-title.warning { background: #7d4f00; }
-    .section-title.danger  { background: #7f1d1d; }
+    .section-title {
+        background: #f8fafc;
+        color: #1f9cb5;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 10px 16px;
+        margin-top: 20px;
+        border-left: 4px solid #1f9cb5;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .section-title.warning { border-left-color: #f59e0b; color: #b45309; background: #fffbeb; }
+    .section-title.danger  { border-left-color: #ef4444; color: #b91c1c; background: #fff5f5; }
 
     /* ─── TABLA ─── */
     .data-table { width: 100%; border-collapse: collapse; }
@@ -91,8 +102,63 @@
     .data-table tbody tr:nth-child(even) td { background: #fafbfc; }
 
     /* ─── FILAS ESPECIALES ─── */
-    .row-subtotal td { background: #f0f2f5 !important; border-top: 1px solid #a0aec0; border-bottom: 2px solid #a0aec0; font-size: 11px; font-weight: 700; color: #1a1a2e; padding: 7px 10px; }
-    .row-grand-total td { background: #1a1a2e !important; color: #fff !important; font-size: 11px; font-weight: 700; padding: 9px 10px; border: none; }
+    .row-subtotal td {
+        background: #fff !important;
+        border-top: 2px solid #1f9cb5;
+        border-bottom: 2px solid #1f9cb5;
+        font-size: 11px;
+        font-weight: 700;
+        color: #1f9cb5;
+        padding: 8px 10px;
+    }
+    .row-grand-total { display: none; } /* Se reemplaza por el bloque de totales abajo */
+
+    /* ─── BLOQUE TOTAL GENERAL ─── */
+    .grand-total-block {
+        margin: 24px 0 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .grand-total-block .gt-title {
+        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #1a1a2e;
+        padding: 12px;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        letter-spacing: 0.5px;
+    }
+    .grand-total-block .gt-grid {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        padding: 16px 24px;
+        gap: 0;
+        background: #fff;
+    }
+    .grand-total-block .gt-item {
+        text-align: center;
+        padding: 8px 32px;
+        border-right: 1px solid #e2e8f0;
+    }
+    .grand-total-block .gt-item:last-child { border-right: none; }
+    .grand-total-block .gt-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+    .grand-total-block .gt-value {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1f9cb5;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    .grand-total-block .gt-value.dark { color: #1a1a2e; }
 
     /* ─── BADGES ─── */
     .badge-corp { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; padding: 2px 7px; border-radius: 2px; }
