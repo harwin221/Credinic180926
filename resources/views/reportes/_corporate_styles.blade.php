@@ -26,26 +26,12 @@
         height: 52px;
         width: auto;
     }
-    .rpt-header .logo-col .tagline {
-        font-size: 8px;
-        color: #94a3b8;
-        margin-top: 3px;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-    }
+    .rpt-header .logo-col .tagline { display: none; }
     .rpt-header .title-col {
         flex: 1;
         text-align: center;
     }
-    .rpt-header .co-name {
-        font-size: 20px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        color: #1a1a2e;
-        line-height: 1;
-    }
-    .rpt-header .co-name span { color: #1f9cb5; }
+    .rpt-header .co-name { display: none; }
     .rpt-header .rpt-title {
         font-size: 11px;
         font-weight: 600;

@@ -436,6 +436,7 @@ class reportesController extends Controller
         $fecha_inicio = $request->desde;
         $fecha_corte = $request->hasta;
         $agente = $request->cobrador; // array o null
+        $cliente = $request->get('cliente');
 
         $cuotasVencidas = \DB::table('prestamo_coutas as pc')
             ->join('prestamos as p', 'p.id', '=', 'pc.prestamo_id')

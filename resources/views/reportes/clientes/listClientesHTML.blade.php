@@ -21,7 +21,7 @@
             <button type="submit" name="pdf" value="pdf" class="btn-act primary" formtarget="_blank">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
-            <button type="submit" name="excel" value="excel" class="btn-act success" style="background-color: #28a745; color: white;">
+            <button type="submit" name="excel" value="excel" class="btn-act success" style="background-color:#28a745;color:white;">
                 <i class="fas fa-file-excel"></i> Excel
             </button>
             <button type="button" class="btn-act primary" onclick="window.print()">
@@ -34,23 +34,28 @@
     </div>
 
     <div class="report-wrapper">
+
+        {{-- ── Encabezado corporativo ── --}}
         <div class="rpt-header">
             <div class="logo-col">
                 <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
-                <span class="tagline">Contigo cuando lo necesitas</span>
             </div>
             <div class="title-col">
-                <div class="co-name">Credi<span>Nica</span></div>
                 <div class="rpt-title">Lista de Desembolsos</div>
-                <div class="rpt-meta">Generado: {{ date('d/m/Y') }} &nbsp;|&nbsp; {{ date('h:i A') }}</div>
+                <div class="rpt-meta">
+                    Generado: {{ date('d/m/Y') }} | {{ date('h:i A') }}
+                    @if($inicioSel && $finSel)
+                        <br>Período: {{ fecha_d_m_Y($inicioSel) }} al {{ fecha_d_m_Y($finSel) }}
+                    @endif
+                </div>
             </div>
             <div class="info-col">
-                @if($inicioSel && $finSel)
-                    <strong>Período:</strong><br>
-                    {{ fecha_d_m_Y($inicioSel) }}<br>
-                    al {{ fecha_d_m_Y($finSel) }}
+                @if($estadoSel == 1)
+                    Estado: <strong>Activo</strong>
+                @elseif($estadoSel == 2)
+                    Estado: <strong>Cancelado</strong>
                 @else
-                    <strong>Fecha:</strong><br>{{ date('d/m/Y') }}
+                    Estado: <strong>Todos</strong>
                 @endif
             </div>
         </div>
@@ -65,10 +70,12 @@
 
         @forelse($prestamosAgrupados as $agenteId => $prestamosGrupo)
             @php
-                $cobradorNombre   = $prestamosGrupo->first()->agente_nombre ?? 'SIN COBRADOR';
-                $subtotalMonto    = 0; $subtotalInteres = 0; $subtotalGeneral = 0;
+                $cobradorNombre    = $prestamosGrupo->first()->agente_nombre ?? 'SIN COBRADOR';
+                $subtotalMonto     = 0;
+                $subtotalInteres   = 0;
+                $subtotalGeneral   = 0;
                 $cantidadPrestamos = $prestamosGrupo->count();
-                foreach($prestamosGrupo as $p) {
+                foreach ($prestamosGrupo as $p) {
                     $subtotalMonto   += $p->monto_prestamo;
                     $subtotalInteres += ($p->monto_financiado - $p->monto_prestamo);
                     $subtotalGeneral += $p->monto_financiado;
@@ -79,18 +86,10 @@
                 $grandTotalPrestamos += $cantidadPrestamos;
             @endphp
 
-            {{-- Espacio entre grupos (excepto el primero) --}}
+            {{-- Separador entre gestores --}}
             @if(!$loop->first)
-                <div style="height:16px; background:#f8fafc; border-top:1px solid #e2e8f0;"></div>
+                <div style="height:20px; background:#f8fafc; border-top:1px solid #e2e8f0;"></div>
             @endif
-                    $subtotalInteres += ($p->monto_financiado - $p->monto_prestamo);
-                    $subtotalGeneral += $p->monto_financiado;
-                }
-                $grandTotalMonto     += $subtotalMonto;
-                $grandTotalInteres   += $subtotalInteres;
-                $grandTotalGeneral   += $subtotalGeneral;
-                $grandTotalPrestamos += $cantidadPrestamos;
-            @endphp
 
             <div class="section-title">Cobrador: {{ strtoupper($cobradorNombre) }}</div>
             <table class="data-table">
@@ -130,7 +129,9 @@
                     </tr>
                     @endforeach
                     <tr class="row-subtotal">
-                        <td colspan="3" class="text-right">Subtotal — {{ $cantidadPrestamos }} préstamo{{ $cantidadPrestamos != 1 ? 's' : '' }}</td>
+                        <td colspan="3" class="text-right">
+                            Subtotal — {{ $cantidadPrestamos }} préstamo{{ $cantidadPrestamos != 1 ? 's' : '' }}
+                        </td>
                         <td class="text-right num">C$ {{ number_format($subtotalMonto, 2) }}</td>
                         <td class="text-right num">C$ {{ number_format($subtotalInteres, 2) }}</td>
                         <td class="text-right num">C$ {{ number_format($subtotalGeneral, 2) }}</td>
@@ -138,10 +139,14 @@
                     </tr>
                 </tbody>
             </table>
+
         @empty
-            <div style="text-align:center; padding:48px; color:#718096;">No se encontraron préstamos desembolsados.</div>
+            <div style="text-align:center; padding:48px; color:#718096;">
+                No se encontraron préstamos desembolsados.
+            </div>
         @endforelse
 
+        {{-- ── Total General ── --}}
         @if($prestamosAgrupados->count() > 0)
         <div class="grand-total-block">
             <div class="gt-title">Montos Totales de los Desembolsos</div>
@@ -166,7 +171,9 @@
         </div>
         @endif
 
-        <div class="rpt-footer">Documento generado por CrediNica &mdash; {{ date('d/m/Y h:i A') }} &mdash; Uso interno exclusivo</div>
+        <div class="rpt-footer">
+            Documento generado por CrediNica &mdash; {{ date('d/m/Y h:i A') }} &mdash; Uso interno exclusivo
+        </div>
     </div>
     <script src="{{asset('assets/vendor/bootstrap/js/bootstrap.bundle.min.js')}}"></script>
 </body>
