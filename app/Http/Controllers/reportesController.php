@@ -1383,8 +1383,14 @@ class reportesController extends Controller
 
     public function estadoClientes(Request $request)
     {
+        $agentesAsignados = $this->getAgentesAsignados();
+
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $listaCobradores = User::agente()->activo()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaCobradores = User::agente()->activo()
+            ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
+                $query->whereIn('id', $agentesAsignados);
+            })
+            ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
         $estado = $request->get('estado');
         $cliente = $request->get('cliente');
         $cobrador = $request->get('cobrador');
@@ -1398,15 +1404,17 @@ class reportesController extends Controller
                     ->select('id', 'user_id', 'monto_prestamo', 'monto_financiado', 'moneda_prestamo', 'agente_id', 'plazo_pago', 'forma_pago_tipo', 'tasa_prestamo', 'created_at', 'updated_at', 'estado')
                     ->orderBy('created_at', 'desc');
             }])
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereHas('prestamos', function ($query) use ($agentesAsignados) {
+                    $query->whereIn('agente_id', $agentesAsignados)->where('desembolsado', 1);
+                });
+            })
             ->when($estado == 1, function ($query) {
                 $query->has('prestamos', '>=', 1, 'and', function ($query) {
                     $query->where('estado', 1)->where('desembolsado', 1);
                 });
             })
             ->when($estado == 2, function ($query) {
-                // Solo clientes que alguna vez tuvieron un préstamo desembolsado real,
-                // pero que ahora NO tienen préstamos activos.
-                // Esto excluye clientes de prueba cuyos préstamos fueron borrados físicamente.
                 $query->whereHas('prestamos', function ($query) {
                     $query->where('desembolsado', 1);
                 })->whereDoesntHave('prestamos', function ($query) {
