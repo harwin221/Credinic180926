@@ -39,7 +39,7 @@ class reportesController extends Controller
 {
     public function index()
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
@@ -71,7 +71,7 @@ class reportesController extends Controller
         if (!$finSel)
             $finSel = Carbon::now();
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -170,7 +170,7 @@ class reportesController extends Controller
         $hastaSel = $request->hasta;
         $cobradorSel = $request->cobrador; // array o null
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -230,7 +230,7 @@ class reportesController extends Controller
         $tipo = $request->tipo;
         $tipo_vista = $request->tipo_vista ?? 'detallado';
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
 
         $listaCobradores = User::whereIn('tipo_usuario', [2, 4])->where('estado', 1)
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
@@ -424,7 +424,7 @@ class reportesController extends Controller
 
     public function cuotasVencidas(Request $request)
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -506,7 +506,7 @@ class reportesController extends Controller
     public function prestamosVencidos(Request $request)
     {
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -564,7 +564,7 @@ class reportesController extends Controller
 
     public function creditosVencidos(Request $request)
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -679,7 +679,7 @@ class reportesController extends Controller
 
     public function listaArqueo(Request $request)
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -918,7 +918,7 @@ class reportesController extends Controller
         $cliente = $request->cliente;
         $cobrador = $request->cobrador;
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1033,7 +1033,7 @@ class reportesController extends Controller
             $fecha2 = date('Y-m-d');
         }
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1123,7 +1123,7 @@ class reportesController extends Controller
         $mesSeleccionado = $request->mes;
         $anyoSeleccionado = $request->anio;
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1150,7 +1150,7 @@ class reportesController extends Controller
         $cobrador = $request->get('cobrador');
         $cuotas = [];
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1231,7 +1231,7 @@ class reportesController extends Controller
 
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1608,7 +1608,7 @@ class reportesController extends Controller
     {
         $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
@@ -1659,7 +1659,7 @@ class reportesController extends Controller
 
     public function colocacionVsRecuperacion(Request $request)
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
 
         $desde    = $request->get('desde');
         $hasta    = $request->get('hasta');
@@ -1747,7 +1747,7 @@ class reportesController extends Controller
 
     public function carteraDiaria(Request $request)
     {
-        $agentesAsignados = this->getAgentesAsignados();
+        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
