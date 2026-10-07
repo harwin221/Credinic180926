@@ -1530,7 +1530,16 @@ class reportesController extends Controller
                 ->toArray();
 
             if ($prestamo) {
-                $prestamoSel = prestamosModel::where('id', decode($prestamo))->first();
+                $prestamoSel = prestamosModel::where('id', decode($prestamo))
+                    ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
+                        $q->whereIn('agente_id', $agentesAsignados);
+                    })
+                    ->first();
+
+                if (!$prestamoSel) {
+                    return redirect()->route('reportes.estadoCuentaCliente')
+                        ->with('error', 'No tiene acceso a este préstamo.');
+                }
                 
                 // Calcular promedio de días de atraso
                 $totalDiasAtraso = 0;
@@ -1609,7 +1618,17 @@ class reportesController extends Controller
                 ->toArray();
 
             if ($prestamo) {
-                $prestamoSel = prestamosModel::where('id', decode($prestamo))->first();
+                $prestamoSel = prestamosModel::where('id', decode($prestamo))
+                    ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
+                        $q->whereIn('agente_id', $agentesAsignados);
+                    })
+                    ->first();
+
+                if (!$prestamoSel) {
+                    return redirect()->route('reportes.planPago')
+                        ->with('error', 'No tiene acceso a este préstamo.');
+                }
+
                 if($request->get('exportar')) {
                     $pdf = Pdf::loadView('reportes.planPago.planPagoPDF', compact('prestamoSel'));
                     $pdf->setPaper('letter', 'portrait');
