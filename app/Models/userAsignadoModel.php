@@ -14,4 +14,10 @@ class userAsignadoModel extends Model
     {
         return $this->hasOne(User::class,'id','admin_asignado_id');
     }
+
+    // El admin dueño de esta asignación
+    public function user()
+    {
+        return $this->hasOne(User::class,'id','user_id');
+    }
 }

@@ -32,8 +32,7 @@ class HomeController extends Controller
      */
     public function index()
     {
-        $agentesAsignados = \App\Models\userAsignadoModel::where('user_id', \Auth::user()->id)
-            ->get()->pluck('admin_asignado_id')->toArray();
+        $agentesAsignados = $this->getAgentesAsignados();
 
         // Si tiene agentes asignados filtra por ellos, si no (admin total) ve todo
         $tieneAsignados = count($agentesAsignados) > 0;
@@ -81,11 +80,39 @@ class HomeController extends Controller
                 $q->whereIn('agente_id', $agentesAsignados);
             })->count();
 
+        // Saldo de cartera total: mismo criterio del reporte de Saldo de Cartera
+        // con el filtro por defecto "Pendientes / Activos" (estado = 1).
+        // Capital pendiente = monto_prestamo - abonos_capital
+        // Interés pendiente = (monto_financiado - monto_prestamo) - abonos_interes
+        $saldoCarteraTotal = prestamosModel::where('prestamos.desembolsado', 1)
+            ->where('prestamos.estado', 1)
+            ->whereNull('prestamos.deleted_at')
+            ->when($tieneAsignados, function($q) use ($agentesAsignados) {
+                $q->whereIn('prestamos.agente_id', $agentesAsignados);
+            })
+            ->leftJoin(DB::raw('(
+                SELECT a.prestamo_id,
+                       SUM(pca.total_capital) as suma_abonos_capital,
+                       SUM(pca.total_interes) as suma_abonos_interes
+                FROM prestamo_cuota_abono pca
+                JOIN abonos a ON a.id = pca.abono_id
+                WHERE pca.estado = 1 AND a.estado = 1
+                GROUP BY a.prestamo_id
+            ) as abonos_agg'), 'abonos_agg.prestamo_id', '=', 'prestamos.id')
+            ->selectRaw('SUM(
+                (prestamos.monto_prestamo - COALESCE(abonos_agg.suma_abonos_capital, 0))
+                + ((prestamos.monto_financiado - prestamos.monto_prestamo) - COALESCE(abonos_agg.suma_abonos_interes, 0))
+            ) as saldo')
+            ->value('saldo');
+
+        $saldoCarteraTotal = $saldoCarteraTotal > 0 ? $saldoCarteraTotal : 0;
+
         $datos = [
             'historicoClientes' => $historicoClientes,
             'clientesActivos'   => $clientesActivos,
             'clientesMes'       => $totalClientesMes,
             'clientesAnyo'      => $totalClientesAnyo,
+            'saldoCarteraTotal' => $saldoCarteraTotal,
             'agentes'           => $agentes,
             'totalPrestamos'    => $totalPrestamos,
             'prestamosActivos'  => $prestamosActivos,

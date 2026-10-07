@@ -94,7 +94,7 @@ class abonoController extends Controller
      */
     public function index(Request $request)
     {
-        $agentesAsignados = userAsignadoModel::where('user_id', Auth::user()->id)->get()->pluck('admin_asignado_id')->toArray();
+        $agentesAsignados = this->getAgentesAsignados();
 
         $listaCobradores = User::whereIn('tipo_usuario', [2, 4])
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {

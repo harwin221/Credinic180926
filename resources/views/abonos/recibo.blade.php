@@ -174,6 +174,19 @@
     // Nunca mostrar negativo (centavos de redondeo)
     if ($nuevoSaldo < 0)    $nuevoSaldo    = 0;
     if ($saldoAnterior < 0) $saldoAnterior = 0;
+
+    // Sucursal: agente del préstamo → admin asignado → sucursal del admin
+    $sucursalRecibo = 'PRINCIPAL';
+    $agenteRecibo = $abono->prestamo->agente ?? null;
+    if ($agenteRecibo) {
+        $adminAsignadoRecibo = \App\Models\userAsignadoModel::where('admin_asignado_id', $agenteRecibo->id)->first();
+        if ($adminAsignadoRecibo) {
+            $adminRecibo = \App\Models\User::find($adminAsignadoRecibo->user_id);
+            if ($adminRecibo && $adminRecibo->sucursal_id && $adminRecibo->sucursal) {
+                $sucursalRecibo = $adminRecibo->sucursal->nombre;
+            }
+        }
+    }
 ?>
 
 <div class="ticket" style="width: 80mm">
@@ -248,6 +261,7 @@
         
         <br>
         <p style="margin: 8px 0;font-size: 15px;line-height: 1.5"><strong>Agente: </strong>{{$abono->user_create->full_name}}</p>
+        <p style="margin: 8px 0;font-size: 15px;line-height: 1.5"><strong>Sucursal: </strong>{{$sucursalRecibo}}</p>
         
         @if(request()->get('reimpresion'))
             <div class="linea-separador"></div>

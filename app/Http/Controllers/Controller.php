@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
+use App\Models\userAsignadoModel;
+use App\Models\User;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Routing\Controller as BaseController;
@@ -10,6 +12,64 @@ use Illuminate\Routing\Controller as BaseController;
 class Controller extends BaseController
 {
     use AuthorizesRequests, ValidatesRequests;
+
+    /**
+     * Retorna los IDs de agentes que el admin logueado puede ver.
+     *
+     * - Sin sucursal asignada + sin agentes asignados → ve TODOS (array vacío = sin restricción)
+     * - Con agentes asignados pero sin sucursal       → solo sus agentes (comportamiento actual)
+     * - Con sucursal asignada                         → solo agentes cuyo admin pertenece a esa sucursal
+     */
+    protected function getAgentesAsignados(): array
+    {
+        $user = \Auth::user();
+
+        // Superadmin (tipo 1) siempre ve todo
+        if ($user->tipo_usuario == 1) {
+            return [];
+        }
+
+        // Agentes asignados directamente a este admin
+        $asignados = userAsignadoModel::where('user_id', $user->id)
+            ->pluck('admin_asignado_id')->toArray();
+
+        // Si el admin tiene sucursal asignada, restringir además por sucursal:
+        // solo agentes cuyos admins pertenecen a la misma sucursal
+        if ($user->sucursal_id) {
+            // Admins de la misma sucursal
+            $adminsEnSucursal = User::where('tipo_usuario', 2)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->pluck('id')->toArray();
+
+            // Agentes asignados a esos admins
+            $agentesEnSucursal = userAsignadoModel::whereIn('user_id', $adminsEnSucursal)
+                ->pluck('admin_asignado_id')->toArray();
+
+            // Si el admin también tiene asignaciones propias, intersectar
+            // Si no tiene asignaciones propias, usar todos los de la sucursal
+            if (!empty($asignados)) {
+                return array_values(array_intersect($asignados, $agentesEnSucursal));
+            }
+
+            return $agentesEnSucursal;
+        }
+
+        // Sin sucursal → comportamiento original (asignados o vacío = ve todo)
+        return $asignados;
+    }
+
+    /**
+     * Nombre de la sucursal del admin logueado.
+     * Útil para recibos y encabezados de reportes.
+     */
+    protected function getSucursalNombre(): string
+    {
+        $user = \Auth::user();
+        if ($user && $user->sucursal_id && $user->sucursal) {
+            return $user->sucursal->nombre;
+        }
+        return 'PRINCIPAL';
+    }
 
     protected function getComplementoQuincenal(int $diaPreferido): int
     {

@@ -792,7 +792,24 @@ class MobileApiController extends Controller
 
         $cliente = $abono->prestamo->cliente;
         $usuario = $abono->user_create ?? Auth::user();
-        $sucursalNombre = ($cliente && $cliente->sucursal) ? $cliente->sucursal->nombre : 'PRINCIPAL';
+
+        // Sucursal: se obtiene del agente del préstamo → su admin asignado → sucursal del admin
+        // Si el agente no tiene admin asignado, se usa la sucursal del cliente como fallback
+        $sucursalNombre = 'PRINCIPAL';
+        $agentePrestamo = $abono->prestamo->agente ?? null;
+        if ($agentePrestamo) {
+            $adminAsignado = \App\Models\userAsignadoModel::where('admin_asignado_id', $agentePrestamo->id)
+                ->with('user')
+                ->first();
+            if ($adminAsignado && $adminAsignado->user && $adminAsignado->user->sucursal_id) {
+                $sucursalNombre = $adminAsignado->user->sucursal->nombre ?? 'PRINCIPAL';
+            } elseif ($agentePrestamo->sucursal_id) {
+                $sucursalNombre = $agentePrestamo->sucursal->nombre ?? 'PRINCIPAL';
+            }
+        }
+        if ($sucursalNombre === 'PRINCIPAL' && $cliente && $cliente->sucursal) {
+            $sucursalNombre = $cliente->sucursal->nombre;
+        }
 
         $totalAbonado = (float)$abono->total_abonado;
         if ($totalAbonado <= 0 && $abono->total_efectivo > 0) {
