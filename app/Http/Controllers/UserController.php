@@ -380,8 +380,15 @@ class UserController extends Controller
     public function indexClientes(Request $request)
     {
         $buscar = $request->buscar;
-        $usuarios=User::with('prestamos')->whereIn('tipo_usuario',[3,6])
+        $agentesAsignados = $this->getAgentesAsignados();
+
+        $usuarios = User::with('prestamos')->whereIn('tipo_usuario',[3,6])
             ->buscar($buscar)
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereHas('prestamos', function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados)->where('desembolsado', 1);
+                });
+            })
             ->orderBy('id','desc')
             ->paginate(30);
         return view('usuarios.clientes.clientesIndex',compact('usuarios'));
