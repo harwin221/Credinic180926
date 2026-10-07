@@ -216,6 +216,11 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
             visible={visible}
             onRequestClose={onClose}
         >
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior="padding"
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 30}
+            >
             <View style={styles.modalOverlay}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
@@ -225,11 +230,6 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                         </TouchableOpacity>
                     </View>
 
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                        style={styles.keyboardView}
-                        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-                    >
                         <ScrollView 
                             showsVerticalScrollIndicator={false} 
                             style={styles.formScroll}
@@ -354,10 +354,9 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                                 onChangeText={(text) => setFormData({ ...formData, direccion: text.toUpperCase() })}
                             />
                         </ScrollView>
-                    </KeyboardAvoidingView>
 
                     {/* Botón de guardar */}
-                    <View style={[styles.buttonContainer, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 24 : 24) + 8 }]}>
+                    <View style={[styles.buttonContainer, { paddingBottom: Math.max(insets.bottom, 24) + 8 }]}>
                         <TouchableOpacity
                             style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                             onPress={handleSubmit}
@@ -375,6 +374,7 @@ export default function ClientFormModal({ visible, onClose, onSuccess }: ClientF
                     </View>
                 </View>
             </View>
+            </KeyboardAvoidingView>
 
             {/* Custom Modal Picker para Departamento / Municipio */}
             <Modal
@@ -501,8 +501,10 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20, 
         borderTopRightRadius: 20, 
         padding: 20, 
-        height: '85%', 
-        width: '100%' 
+        maxHeight: '90%',
+        height: '85%',
+        width: '100%',
+        flex: 1,
     },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     modalTitle: { fontSize: 18, fontWeight: '800', color: '#1e293b' },

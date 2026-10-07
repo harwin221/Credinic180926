@@ -41,10 +41,18 @@ export default function RecoveredScreen() {
       // Cargar inmediatamente al enfocar la pestaña
       load();
 
-      // Auto-actualización periódica en vivo cada 20 segundos sin necesidad de salir de la app
-      const timer = setInterval(() => {
-        if (isMounted) load();
-      }, 20000);
+      // Auto-actualización periódica en vivo cada 60 segundos solo si hay conexión
+      const timer = setInterval(async () => {
+        if (!isMounted) return;
+        // Verificar conexión antes de intentar — evita logout falso por mala señal
+        try {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 3000);
+          const ping = await fetch(`${API_ENDPOINTS.base}/api/mobile/login`, { method: 'GET', signal: ctrl.signal }).catch(() => null);
+          clearTimeout(tid);
+          if (ping !== null) load(); // solo refresca si hay red real
+        } catch (_) { /* sin conexión, omitir */ }
+      }, 60000);
 
       return () => {
         isMounted = false;
@@ -82,9 +90,12 @@ export default function RecoveredScreen() {
       try {
         const result = JSON.parse(responseText);
 
-        // Sesión expirada — el servidor devolvió HTML y apiFetch lo convirtió a JSON
-        if (!result.success && result.html_response && resp.status === 401) {
-          console.warn('[DASHBOARD] Sesión expirada, cerrando sesión...');
+        // Sesión expirada — SOLO cerrar si el 401 viene del servidor real
+        // (html_response=true significa que apiFetch fabricó el JSON porque el servidor
+        // devolvió HTML, lo cual puede ser un error de red o 500, NO necesariamente
+        // un token inválido — no cerrar sesión por eso)
+        if (!result.success && resp.status === 401 && !result.html_response) {
+          console.warn('[DASHBOARD] Token inválido confirmado por servidor, cerrando sesión...');
           await logout();
           return;
         }

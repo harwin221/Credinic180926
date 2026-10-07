@@ -5,10 +5,10 @@
 // export const API_BASE_URL = 'http://192.168.0.11:3000'; // Cambia la IP por la de tu computadora
 
 // Para producción (URL real del sistema)
-export const API_BASE_URL = 'https://credinica.com';
+//export const API_BASE_URL = 'https://credinica.com';
 
 // Para desarrollo local en red WiFi
-//export const API_BASE_URL = 'http://192.168.0.11:8000';
+export const API_BASE_URL = 'http://192.168.0.12:8000';
 
 // Para desarrollo con Vercel (testing)
 // export const API_BASE_URL = 'https://credinic-apk.vercel.app';
@@ -31,6 +31,8 @@ export const API_ENDPOINTS = {
     mobile_void_payment: `${API_BASE_URL}/api/mobile/mobile_void_payment`,
     mobile_requests: `${API_BASE_URL}/api/mobile/requests`,
     mobile_disbursements: `${API_BASE_URL}/api/mobile/disbursements`,
+    mobile_negocios_cliente: `${API_BASE_URL}/api/mobile/negocios-cliente`,
+    mobile_crear_negocio: `${API_BASE_URL}/api/mobile/crear-negocio`,
     approve_credit: `${API_BASE_URL}/api/mobile/approve-credit`,
     reject_credit: `${API_BASE_URL}/api/mobile/reject-credit`,
     disburse_credit: `${API_BASE_URL}/api/mobile/disburse-credit`,

@@ -1330,7 +1330,7 @@ class MobileApiController extends Controller
             'agente'              => encode($agente->id),
             'vendedor'            => encode($agente->id),
             'fiador'              => null,
-            'negocio'             => null,
+            'negocio'             => $request->filled('negocioId') ? encode((int)$request->negocioId) : null,
             'fechaPrestamo'       => \Carbon\Carbon::now()->toDateString(),
             // CRÍTICO: 'desembolso' no debe ser null para evitar error en decode($request->desembolso)
             'desembolso'          => encode($agente->id), 
@@ -1451,6 +1451,79 @@ class MobileApiController extends Controller
                 'success' => false,
                 'message' => 'Error al crear cliente: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    // ─── GET /api/mobile/negocios-cliente ────────────────────────────────────────
+    public function getClientNegocios(Request $request)
+    {
+        try {
+            $clientId = $request->get('clientId');
+            if (!$clientId) {
+                return response()->json(['success' => false, 'message' => 'clientId requerido'], 400);
+            }
+            $negocios = \App\Models\userNegociosModel::where('user_id', $clientId)
+                ->whereNull('deleted_at')
+                ->orderBy('id', 'desc')
+                ->get()
+                ->map(function ($n) {
+                    $dep = '';
+                    $mun = '';
+                    if ($n->departamento_municipio) {
+                        $mun = $n->departamento_municipio->nombre ?? '';
+                        $dep = $n->departamento_municipio->departamento->nombre ?? '';
+                    }
+                    return [
+                        'id'               => $n->id,
+                        'nombre'           => $n->nombre,
+                        'direccion'        => $n->direccion,
+                        'municipio_id'     => $n->municipio_id,
+                        'municipio'        => $mun,
+                        'departamento'     => $dep,
+                        'telefono_negocio' => $n->telefono_negocio ?? '',
+                        'comentarios'      => $n->comentarios ?? '',
+                        'punto_geografico' => $n->punto_geografico ?? '',
+                    ];
+                });
+            return response()->json(['success' => true, 'negocios' => $negocios]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ─── POST /api/mobile/crear-negocio ──────────────────────────────────────────
+    public function crearNegocioCliente(Request $request)
+    {
+        $request->validate([
+            'clientId'  => 'required|integer',
+            'nombre'    => 'required|string',
+            'direccion' => 'required|string',
+        ]);
+        try {
+            $agente = $request->user();
+            $negocio = new \App\Models\userNegociosModel();
+            $negocio->user_id          = $request->clientId;
+            $negocio->nombre           = $request->nombre;
+            $negocio->direccion        = $request->direccion;
+            $negocio->telefono_negocio = $request->telefono ?? null;
+            $negocio->comentarios      = $request->comentarios ?? null;
+            $negocio->punto_geografico = $request->puntoGeografico ?? null;
+            if ($request->filled('municipioId')) {
+                $mid = $request->municipioId;
+                $negocio->municipio_id = is_numeric($mid) ? (int)$mid : decode($mid);
+            } else {
+                $negocio->municipio_id = 155; // NINGUNO por defecto
+            }
+            $negocio->created_user_id = $agente->id;
+            $negocio->save();
+            return response()->json([
+                'success'   => true,
+                'message'   => 'Negocio creado correctamente.',
+                'negocioId' => $negocio->id,
+                'nombre'    => $negocio->nombre,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -1697,7 +1770,6 @@ class MobileApiController extends Controller
             $montoCuota      = $plazo > 0 ? round($montoFinanciado / $plazo, 2) : 0;
 
             $prestamo->monto_prestamo    = $monto;
-            $prestamo->monto             = $monto;
             $prestamo->plazo_pago        = $plazo;
             $prestamo->tasa_prestamo     = $tasa;
             $prestamo->interes_mes       = $interesMensual;
@@ -1777,7 +1849,11 @@ class MobileApiController extends Controller
                 ->where('estado', '!=', 4)
                 ->where(function ($q) {
                     $q->where(function ($sub) {
-                        $sub->where('estado_aprobacion', 2)
+                        // Aprobados (estado_aprobacion=2) o creados directo en web (estado_aprobacion=null)
+                        // ambos casos son "pendiente de desembolso"
+                        $sub->where(function($ap) {
+                                $ap->where('estado_aprobacion', 2)->orWhereNull('estado_aprobacion');
+                            })
                             ->where(function($d) {
                                 $d->where('desembolsado', 0)->orWhereNull('desembolsado');
                             });

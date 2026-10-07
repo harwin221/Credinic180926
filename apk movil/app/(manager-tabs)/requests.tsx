@@ -661,6 +661,7 @@ const styles = StyleSheet.create({
         padding: 20,
         paddingBottom: Platform.OS === 'android' ? 32 : 24,
         maxHeight: '90%',
+        flex: 1,
     },
     editHeader: {
         flexDirection: 'row',
