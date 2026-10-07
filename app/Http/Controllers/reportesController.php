@@ -1638,6 +1638,8 @@ class reportesController extends Controller
 
     public function antiguedad_saldos(Request $request)
     {
+        $agentesAsignados = $this->getAgentesAsignados();
+
         $listaClientes = User::cliente()
             ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
                 $query->whereHas('prestamos', function ($q) use ($agentesAsignados) {
@@ -1646,7 +1648,6 @@ class reportesController extends Controller
             })
             ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
-        $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
             ->when($agentesAsignados, function ($query) use ($agentesAsignados) {
                 $query->wherein('id', $agentesAsignados);
