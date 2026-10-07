@@ -27,37 +27,40 @@
 
         /* ─── ENCABEZADO CORPORATIVO ────────────────────── */
         .report-header {
+            position: relative;
             text-align: center;
-            padding: 28px 40px 18px;
+            padding: 18px 150px;
+            min-height: 118px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             border-bottom: 3px double #1a1a2e;
         }
         .report-header img {
-            height: 42px;
+            position: absolute;
+            left: 32px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 96px;
             width: auto;
-            margin-bottom: 10px;
             display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .report-header .company-name {
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: #1a1a2e;
         }
         .report-header .report-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #4a5568;
-            margin-top: 4px;
+            font-size: 19px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-top: 6px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 1px;
         }
         .report-header .report-meta {
             font-size: 11px;
             color: #718096;
-            margin-top: 6px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e2e8f0;
+            width: 100%;
         }
 
         /* ─── BARRA DE FILTROS ──────────────────────────── */
@@ -76,13 +79,13 @@
         /* ─── SECCIÓN POR COBRADOR ──────────────────────── */
         .cobrador-section { padding: 0 0 16px 0; }
         .cobrador-title {
-            background: #1a1a2e;
+            background: #1f9cb5;
             color: #ffffff;
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 1px;
             text-transform: uppercase;
-            padding: 7px 16px;
+            padding: 9px 16px;
             margin: 0;
         }
 
@@ -114,23 +117,60 @@
         /* ─── FILA SUBTOTAL ─────────────────────────────── */
         .row-subtotal td {
             background: #f0f2f5 !important;
-            border-top: 1px solid #a0aec0;
-            border-bottom: 2px solid #a0aec0;
+            border-top: 2px solid #1f9cb5;
+            border-bottom: 1px solid #e2e8f0;
             font-size: 11px;
             font-weight: 700;
             color: #1a1a2e;
-            padding: 7px 10px;
+            padding: 8px 10px;
         }
 
-        /* ─── FILA TOTAL GENERAL ────────────────────────── */
-        .row-grand-total td {
-            background: #1a1a2e !important;
-            color: #ffffff !important;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 9px 10px;
-            border: none;
+        /* ─── BLOQUE TOTAL GENERAL ─── */
+        .grand-total-block {
+            margin: 24px 0 0;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
         }
+        .grand-total-block .gt-title {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #1a1a2e;
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+            letter-spacing: 0.5px;
+        }
+        .grand-total-block .gt-grid {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            padding: 16px 24px;
+            gap: 0;
+            background: #fff;
+        }
+        .grand-total-block .gt-item {
+            text-align: center;
+            padding: 8px 32px;
+            border-right: 1px solid #e2e8f0;
+        }
+        .grand-total-block .gt-item:last-child { border-right: none; }
+        .grand-total-block .gt-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .grand-total-block .gt-value {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1f9cb5;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .grand-total-block .gt-value.dark { color: #1a1a2e; }
 
         /* ─── BADGES DE ESTADO ──────────────────────────── */
         .estado-badge {
@@ -184,17 +224,17 @@
             color: #2d3748;
             transition: background .15s;
         }
+        /* ─── BOTONES ─── */
         .btn-action:hover { background: #f0f2f5; color: #1a1a2e; }
-        .btn-action.primary { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
-        .btn-action.primary:hover { background: #2d3748; color: #fff; }
+        .btn-action.primary { background: #1f9cb5; color: #fff; border-color: #1f9cb5; }
+        .btn-action.primary:hover { background: #17879e; color: #fff; }
 
         /* ─── MEDIA PRINT ───────────────────────────────── */
         @media print {
             body { background: white; padding: 0; font-size: 11px; }
             .report-wrapper { border: none; max-width: 100%; }
             .no-print { display: none !important; }
-            .cobrador-title { background: #1a1a2e !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .row-grand-total td { background: #1a1a2e !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .cobrador-title { background: #1f9cb5 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .row-subtotal td { background: #f0f2f5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .data-table tbody tr:nth-child(even) td { background: #fafbfc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .data-table { page-break-inside: auto; }
@@ -220,7 +260,6 @@
         {{-- ─── ENCABEZADO ───────────────────────────────────── --}}
         <div class="report-header">
             <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
-            <div class="company-name">CrediNica</div>
             <div class="report-title">Reporte de Créditos Vencidos</div>
             <div class="report-meta">
                 Fecha de generación: {{ date('d/m/Y') }} &nbsp;|&nbsp; Hora: {{ date('h:i A') }}
@@ -270,6 +309,7 @@
                             <th class="text-right">Cuota</th>
                             <th class="text-right">Monto Atrasado</th>
                             <th class="text-right">Saldo Pendiente</th>
+                            <th class="text-center">Último Pago</th>
                             <th class="text-center">Prom. Días Atraso</th>
                         </tr>
                     </thead>
@@ -285,6 +325,13 @@
                                 C$ {{ number_format($p->monto_atrasado, 2) }}
                             </td>
                             <td class="text-right num num-red bold">C$ {{ number_format($p->saldo_pendiente, 2) }}</td>
+                            <td class="text-center">
+                                @if($p->ultimo_pago)
+                                    <span class="bold">{{ fecha_d_m_Y($p->ultimo_pago) }}</span>
+                                @else
+                                    <span style="color:#a0aec0;">Sin pagos</span>
+                                @endif
+                            </td>
                             <td class="text-center">
                                 @if($p->promedio_dias_atraso > 0)
                                     <span class="num-red bold">{{ $p->promedio_dias_atraso }}</span>
@@ -305,6 +352,7 @@
                             <td class="text-right num num-red">C$ {{ number_format($prestamos->sum('monto_atrasado'), 2) }}</td>
                             <td class="text-right num num-red">C$ {{ number_format($subtotalSaldo, 2) }}</td>
                             <td></td>
+                            <td></td>
                         </tr>
                     </tbody>
                 </table>
@@ -317,20 +365,23 @@
 
         {{-- ─── TOTAL GENERAL ────────────────────────────────── --}}
         @if($prestamosGrouped->count() > 0)
-        <table class="data-table" style="margin-top: 4px;">
-            <tbody>
-                <tr class="row-grand-total">
-                    <td colspan="2" class="text-right" style="letter-spacing:0.5px;">
-                        TOTAL GENERAL &mdash; {{ $granTotalPrestamos }} préstamo{{ $granTotalPrestamos != 1 ? 's' : '' }} vencido{{ $granTotalPrestamos != 1 ? 's' : '' }}
-                    </td>
-                    <td class="text-right num">C$ {{ number_format($granTotalPrincipal, 2) }}</td>
-                    <td colspan="2"></td>
-                    <td class="text-right num" style="color:#fca5a5;">C$ {{ number_format($granTotalAtrasado, 2) }}</td>
-                    <td class="text-right num" style="color:#fca5a5;">C$ {{ number_format($granTotalSaldoPendiente, 2) }}</td>
-                    <td></td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="grand-total-block">
+            <div class="gt-title">Totales Generales &mdash; {{ $granTotalPrestamos }} préstamo{{ $granTotalPrestamos != 1 ? 's' : '' }} vencido{{ $granTotalPrestamos != 1 ? 's' : '' }}</div>
+            <div class="gt-grid">
+                <div class="gt-item">
+                    <div class="gt-label">Principal</div>
+                    <div class="gt-value dark">C$ {{ number_format($granTotalPrincipal, 2) }}</div>
+                </div>
+                <div class="gt-item">
+                    <div class="gt-label">Atrasado</div>
+                    <div class="gt-value" style="color:#b91c1c;">C$ {{ number_format($granTotalAtrasado, 2) }}</div>
+                </div>
+                <div class="gt-item">
+                    <div class="gt-label">Saldo Pendiente</div>
+                    <div class="gt-value" style="color:#b91c1c;">C$ {{ number_format($granTotalSaldoPendiente, 2) }}</div>
+                </div>
+            </div>
+        </div>
         @endif
 
         {{-- ─── PIE DE PÁGINA ────────────────────────────────── --}}

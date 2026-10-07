@@ -1,6 +1,6 @@
 <div class="d-flex align-items-center">
-    <a href="{{route('home')}}" class="logo  text-center">
-        <img src="{{asset('assets/img/LogoCrediNica.png')}}" style="width: 45%" alt="">
+    <a href="{{route('home')}}" class="logo d-flex align-items-center">
+        <img src="{{asset('assets/img/LogoCrediNica.png')}}" style="height: 80px; width: auto;" alt="CrediNica">
 {{--        <span class="d-none d-lg-block mx-auto">CrediNica</span>--}}
     </a>
     <i class="bi bi-list toggle-sidebar-btn"></i>

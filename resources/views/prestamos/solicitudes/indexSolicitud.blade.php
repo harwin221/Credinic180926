@@ -29,7 +29,7 @@
         <!-- Modal Solicitudes Pendientes -->
         <div class="modal fade" id="modalPendientes" tabindex="-1" role="dialog" aria-labelledby="modalPendientesTitleId"
              aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document" style="margin-left: 320px;">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">Solicitudes Pendientes</h5>
@@ -78,7 +78,7 @@
         <!-- Modal Solicitudes Aprobadas -->
         <div class="modal fade" id="modalAprobadas" tabindex="-1" role="dialog" aria-labelledby="modalAprobadasTitleId"
              aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document" style="margin-left: 320px;">
                 <div class="modal-content">
                     <div class="modal-header bg-success text-white">
                         <h5 class="modal-title">Solicitudes Aprobadas (hoy)</h5>
@@ -127,7 +127,7 @@
         <!-- Modal Solicitudes Rechazadas -->
         <div class="modal fade" id="modalRechazadas" tabindex="-1" role="dialog" aria-labelledby="modalRechazadasTitleId"
              aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document" style="margin-left: 320px;">
                 <div class="modal-content">
                     <div class="modal-header bg-danger text-white">
                         <h5 class="modal-title">Solicitudes Rechazadas (hoy)</h5>

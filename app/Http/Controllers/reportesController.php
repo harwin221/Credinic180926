@@ -610,6 +610,7 @@ class reportesController extends Controller
                 \DB::raw("GREATEST(0, COALESCE(t_mora.total_cuotas_vencidas, 0) - COALESCE(t_mora.total_abonado_vencidas, 0)) as monto_atrasado")
             )
             ->whereIn('p.estado', [1, 3])
+            ->where('p.desembolsado', 1)
             ->whereNull('p.deleted_at')
             ->whereRaw("(COALESCE(s.total_esperado, 0) - COALESCE(t_abono.total_abonado, 0)) > 0.5")
             ->when($cobrador, function ($query) use ($cobrador) {
@@ -658,6 +659,12 @@ class reportesController extends Controller
                 }
             }
             $p->promedio_dias_atraso = $totalCuotas > 0 ? round($totalDiasAtraso / $totalCuotas, 2) : 0;
+
+            // Último abono recibido para este préstamo
+            $p->ultimo_pago = \DB::table('abonos')
+                ->where('prestamo_id', $p->id)
+                ->where('estado', 1)
+                ->max('fecha_abono');
 
             return $p;
         });
@@ -1154,6 +1161,7 @@ class reportesController extends Controller
 
             $cuotas = prestamoCuotasModel::with('prestamo','prestamo.cliente','prestamo.agente')->join('prestamos as P', 'P.id', 'prestamo_coutas.prestamo_id')
                 ->where('P.desembolsado', 1)
+                ->whereNull('P.deleted_at')
                 ->whereDate('prestamo_coutas.fecha_cuota', '>=', $inicio)
                 ->whereDate('prestamo_coutas.fecha_cuota', '<=', $fin)
                 ->where('P.estado', '!=', 4)//anulado
@@ -1387,7 +1395,7 @@ class reportesController extends Controller
             }])
             ->with(['prestamos' => function ($query) {
                 $query->where('desembolsado', 1)
-                    ->select('id', 'user_id', 'monto_prestamo', 'monto_financiado', 'moneda_prestamo', 'agente_id', 'plazo_pago', 'forma_pago_tipo', 'created_at', 'updated_at', 'estado')
+                    ->select('id', 'user_id', 'monto_prestamo', 'monto_financiado', 'moneda_prestamo', 'agente_id', 'plazo_pago', 'forma_pago_tipo', 'tasa_prestamo', 'created_at', 'updated_at', 'estado')
                     ->orderBy('created_at', 'desc');
             }])
             ->when($estado == 1, function ($query) {
@@ -1396,7 +1404,12 @@ class reportesController extends Controller
                 });
             })
             ->when($estado == 2, function ($query) {
-                $query->whereDoesntHave('prestamos', function ($query) {
+                // Solo clientes que alguna vez tuvieron un préstamo desembolsado real,
+                // pero que ahora NO tienen préstamos activos.
+                // Esto excluye clientes de prueba cuyos préstamos fueron borrados físicamente.
+                $query->whereHas('prestamos', function ($query) {
+                    $query->where('desembolsado', 1);
+                })->whereDoesntHave('prestamos', function ($query) {
                     $query->where('estado', 1)->where('desembolsado', 1);
                 });
             })

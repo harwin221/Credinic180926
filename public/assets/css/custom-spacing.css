@@ -81,3 +81,11 @@
 .card {
   margin-bottom: 20px !important;
 }
+
+/* ── Sidebar queda debajo de modales Bootstrap ───────────────
+   Usamos #sidebar (ID) para mayor especificidad que las
+   reglas de clase .sidebar que puedan tener !important. */
+body.modal-open #sidebar,
+body.modal-open .sidebar {
+  z-index: 100 !important;
+}

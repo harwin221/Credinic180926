@@ -38,19 +38,22 @@
         }
         
         .logo-section img {
-            width: 140px;
-            height: auto;
+            height: 96px;
+            width: auto;
         }
-        
+
         .title-section {
             display: table-cell;
             vertical-align: middle;
             text-align: center;
         }
-        
+
         .title-section h1 {
-            font-size: 18px;
-            color: #1f9cb5;
+            font-size: 19px;
+            font-weight: 700;
+            color: #1a1a2e;
+            letter-spacing: 1px;
+            text-transform: uppercase;
             margin-bottom: 5px;
         }
         
@@ -248,13 +251,36 @@
             ->groupBy('prestamo_id')
             ->get()
             ->keyBy('prestamo_id');
-            
-        $ultimasFechasMasivas = \DB::table('prestamo_coutas')
+
+        // Primera cuota PENDIENTE vencida (estado != 3 y fecha_cuota < hoy)
+        // Es la misma lógica que usa $prestamo->dias_atraso en el modelo
+        $primerasCuotasVencidas = \DB::table('prestamo_coutas')
             ->whereIn('prestamo_id', $prestamosIds)
-            ->select('prestamo_id', \DB::raw('MAX(fecha_cuota) as ultima_fecha'))
+            ->where('estado', '!=', 3)
+            ->whereDate('fecha_cuota', '<', \Carbon\Carbon::now()->toDateString())
+            ->select('prestamo_id', \DB::raw('MIN(fecha_cuota) as primera_cuota_vencida'))
             ->groupBy('prestamo_id')
             ->get()
             ->keyBy('prestamo_id');
+
+        // Pre-calcular días vencidos por préstamo para poder ordenar cada subgrupo
+        $diasVencidosPorPrestamo = [];
+        foreach ($prestamosIds as $pid) {
+            $reg = $primerasCuotasVencidas->get($pid);
+            if ($reg && $reg->primera_cuota_vencida) {
+                $d = \Carbon\Carbon::parse($reg->primera_cuota_vencida)->diffInDays(\Carbon\Carbon::now());
+                $diasVencidosPorPrestamo[$pid] = $d; // siempre >= 0
+            } else {
+                $diasVencidosPorPrestamo[$pid] = -1; // corriente (sin mora)
+            }
+        }
+
+        // Ordenar cada grupo por días vencidos de mayor a menor
+        $prestamosPorCobrador = $prestamosPorCobrador->map(function($grupo) use ($diasVencidosPorPrestamo) {
+            return $grupo->sortByDesc(function($p) use ($diasVencidosPorPrestamo) {
+                return $diasVencidosPorPrestamo[$p->id] ?? -9999;
+            })->values();
+        });
     @endphp
 
     <!-- DATOS AGRUPADOS POR COBRADOR -->
@@ -294,31 +320,24 @@
                             $sumaAbonos = $abonos ? $abonos->suma_abonos : 0;
                             $saldoActual = $dt->monto_financiado - $sumaAbonos;
                             
-                            $diasVencidos = 0;
-                            $fechaVenc = '-';
+                            $diasVencidos = $diasVencidosPorPrestamo[$dt->id] ?? -1;
                             $corriente = 0;
                             $dias30 = 0;
                             $dias60 = 0;
                             $dias90 = 0;
                             $diasMas = 0;
                             
-                            $ultimaFechaReg = $ultimasFechasMasivas->get($dt->id);
-                            
-                            if($ultimaFechaReg && $ultimaFechaReg->ultima_fecha){
-                                $ultimaFechaStr = $ultimaFechaReg->ultima_fecha; // Formato Y-m-d
-                                $diasVencidos = Carbon::parse($ultimaFechaStr)->diffInDays(Carbon::now(), false);
-                                
-                                if ($diasVencidos < 0) {
-                                    $corriente = $saldoActual;
-                                } elseif ($diasVencidos <= 30) {
-                                    $dias30 = $saldoActual;
-                                } elseif ($diasVencidos <= 60) {
-                                    $dias60 = $saldoActual;
-                                } elseif ($diasVencidos <= 90) {
-                                    $dias90 = $saldoActual;
-                                } else {
-                                    $diasMas = $saldoActual;
-                                }
+                            if ($diasVencidos < 0) {
+                                // Sin cuotas vencidas pendientes → corriente
+                                $corriente = $saldoActual;
+                            } elseif ($diasVencidos <= 30) {
+                                $dias30 = $saldoActual;
+                            } elseif ($diasVencidos <= 60) {
+                                $dias60 = $saldoActual;
+                            } elseif ($diasVencidos <= 90) {
+                                $dias90 = $saldoActual;
+                            } elseif ($diasVencidos !== -9999) {
+                                $diasMas = $saldoActual;
                             }
                             
                             $subtotalCorriente += $corriente;

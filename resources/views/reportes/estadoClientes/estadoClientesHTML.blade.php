@@ -15,7 +15,9 @@
 
     <div class="report-wrapper">
         <div class="rpt-header">
-            <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
+            <div class="logo-col">
+                <img src="{{asset('assets/img/LogoCrediNica.png')}}" alt="CrediNica">
+            </div>
             <div class="co-name">CrediNica</div>
             <div class="rpt-title">Clientes Inactivos</div>
             <div class="rpt-meta">Generado: {{ date('d/m/Y') }} &nbsp;|&nbsp; {{ date('h:i A') }}</div>
@@ -62,7 +64,7 @@
                             @php
                                 $ultimoPrestamo = $clienteItem->prestamos->first();
                                 $montoUltimo   = $ultimoPrestamo ? (float) $ultimoPrestamo->monto_prestamo : 0;
-                                $interesUltimo = $ultimoPrestamo ? (float) ($ultimoPrestamo->monto_financiado - $ultimoPrestamo->monto_prestamo) : 0;
+                                $interesUltimo = $ultimoPrestamo ? (float) $ultimoPrestamo->tasa_prestamo : 0;
                                 $monedaUltimo  = ($ultimoPrestamo && $ultimoPrestamo->moneda_prestamo == 2) ? 'U$' : 'C$';
                                 $formasPago = ['1'=>'Diario','2'=>'Semanal','3'=>'Quincenal','4'=>'Mensual','5'=>'Trimestral','6'=>'Bimestral','7'=>'Catorcenal'];
                                 $subtotalCreditos += $montoUltimo;
@@ -73,7 +75,7 @@
                                 <td>{{ $clienteItem->full_name }}</td>
                                 <td style="font-size:10px;">{{ $clienteItem->direccion }}</td>
                                 <td class="text-right num">{{ $monedaUltimo }} {{ number_format($montoUltimo, 2) }}</td>
-                                <td class="text-right num">{{ $monedaUltimo }} {{ number_format($interesUltimo, 2) }}</td>
+                                <td class="text-right num">{{ number_format($interesUltimo, 2) }}%</td>
                                 <td class="text-center">{{ $ultimoPrestamo ? $ultimoPrestamo->plazo_pago : '-' }}</td>
                                 <td class="text-center">{{ $ultimoPrestamo ? ($formasPago[$ultimoPrestamo->forma_pago_tipo] ?? '-') : '-' }}</td>
                                 <td class="text-center">{{ $ultimoPrestamo && $ultimoPrestamo->fecha_cancelacion ? fecha_d_m_Y($ultimoPrestamo->fecha_cancelacion) : '-' }}</td>
@@ -85,15 +87,15 @@
                         @endforeach
                     </tbody>
                     <tfoot>
-                        <tr class="row-grand-total">
-                            <td colspan="3" class="text-right"><strong>Subtotal Agente ({{ count($clientesDeAgente) }} clientes)</strong></td>
-                            <td class="text-right num"><strong>C$ {{ number_format($subtotalCreditos, 2) }}</strong></td>
+                        <tr class="row-subtotal">
+                            <td colspan="3" class="text-right">Subtotal Agente ({{ count($clientesDeAgente) }} clientes)</td>
+                            <td class="text-right num">C$ {{ number_format($subtotalCreditos, 2) }}</td>
                             <td colspan="6"></td>
                         </tr>
                     </tfoot>
                 </table>
-                @php 
-                    $granTotalCreditos += $subtotalCreditos; 
+                @php
+                    $granTotalCreditos += $subtotalCreditos;
                     $granTotalClientes += count($clientesDeAgente);
                 @endphp
             @empty
@@ -102,14 +104,19 @@
                 </table>
             @endforelse
             @if($granTotalClientes > 0)
-                <table class="data-table" style="margin-top: 15px;">
-                    <tfoot>
-                        <tr class="row-grand-total">
-                            <td class="text-right"><strong>GRAN TOTAL INACTIVOS ({{ $granTotalClientes }} clientes)</strong></td>
-                            <td class="text-right num" style="width: 150px;"><strong>C$ {{ number_format($granTotalCreditos, 2) }}</strong></td>
-                        </tr>
-                    </tfoot>
-                </table>
+                <div class="grand-total-block">
+                    <div class="gt-title">Gran Total Inactivos &mdash; {{ $granTotalClientes }} cliente{{ $granTotalClientes != 1 ? 's' : '' }}</div>
+                    <div class="gt-grid">
+                        <div class="gt-item">
+                            <div class="gt-label">Clientes</div>
+                            <div class="gt-value dark">{{ $granTotalClientes }}</div>
+                        </div>
+                        <div class="gt-item">
+                            <div class="gt-label">Saldo Créditos</div>
+                            <div class="gt-value">C$ {{ number_format($granTotalCreditos, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
             @endif
         @else
             <table class="data-table">
@@ -155,14 +162,30 @@
                 </tbody>
                 @if(count($clientes) > 0)
                 <tfoot>
-                    <tr class="row-grand-total">
-                        <td colspan="4" class="text-right"><strong>TOTAL ({{ count($clientes) }} clientes)</strong></td>
-                        <td class="text-right num"><strong>C$ {{ number_format($totalMontoCreditos, 2) }}</strong></td>
+                    <tr class="row-subtotal">
+                        <td colspan="4" class="text-right">SUBTOTAL &mdash; {{ count($clientes) }} cliente{{ count($clientes) != 1 ? 's' : '' }}</td>
+                        <td class="text-right num">C$ {{ number_format($totalMontoCreditos, 2) }}</td>
                         <td></td>
                     </tr>
                 </tfoot>
                 @endif
             </table>
+
+            @if(count($clientes) > 0)
+            <div class="grand-total-block">
+                <div class="gt-title">Total &mdash; {{ count($clientes) }} cliente{{ count($clientes) != 1 ? 's' : '' }}</div>
+                <div class="gt-grid">
+                    <div class="gt-item">
+                        <div class="gt-label">Clientes</div>
+                        <div class="gt-value dark">{{ count($clientes) }}</div>
+                    </div>
+                    <div class="gt-item">
+                        <div class="gt-label">Monto Total</div>
+                        <div class="gt-value">C$ {{ number_format($totalMontoCreditos, 2) }}</div>
+                    </div>
+                </div>
+            </div>
+            @endif
         @endif
 
         <div class="rpt-footer">Documento generado por CrediNica &mdash; {{ date('d/m/Y h:i A') }} &mdash; Uso interno exclusivo</div>
