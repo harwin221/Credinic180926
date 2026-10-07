@@ -1502,7 +1502,16 @@ class reportesController extends Controller
 
     public function estadoCuentaClientes(Request $request)
     {
-        $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $agentesAsignados = $this->getAgentesAsignados();
+
+        $listaClientes = User::cliente()
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereHas('prestamos', function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados)->where('desembolsado', 1);
+                });
+            })
+            ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+
         $cliente = $request->get('cliente');
         $prestamo = $request->get('prestamos');
         $prestamos = [];
@@ -1511,6 +1520,9 @@ class reportesController extends Controller
             $prestamos = prestamosModel::where('user_id', decode($cliente))
                 ->where('desembolsado', 1)
                 ->where('estado', 1)
+                ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados);
+                })
                 ->get()
                 ->mapWithKeys(function($p) {
                     return [encode($p->id) => '#'.$p->consecutivo.' | C$ '.number_format($p->monto_financiado, 2)];
@@ -1569,7 +1581,16 @@ class reportesController extends Controller
 
     public function planPago(Request $request)
     {
-        $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $agentesAsignados = $this->getAgentesAsignados();
+
+        $listaClientes = User::cliente()
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereHas('prestamos', function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados)->where('desembolsado', 1);
+                });
+            })
+            ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+
         $cliente = $request->get('cliente');
         $prestamo = $request->get('prestamos');
         $prestamos = [];
@@ -1578,6 +1599,9 @@ class reportesController extends Controller
             $prestamos = prestamosModel::where('user_id', decode($cliente))
                 ->where('desembolsado', 1)
                 ->where('estado', 1)
+                ->when(count($agentesAsignados), function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados);
+                })
                 ->get()
                 ->mapWithKeys(function($p) {
                     return [encode($p->id) => '#'.$p->consecutivo.' | C$ '.number_format($p->monto_financiado, 2)];
@@ -1614,7 +1638,13 @@ class reportesController extends Controller
 
     public function antiguedad_saldos(Request $request)
     {
-        $listaClientes = User::cliente()->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
+        $listaClientes = User::cliente()
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereHas('prestamos', function ($q) use ($agentesAsignados) {
+                    $q->whereIn('agente_id', $agentesAsignados)->where('desembolsado', 1);
+                });
+            })
+            ->orderBy('nombres')->orderBy('apellidos')->get()->pluck('full_name', 'id_enc')->toArray();
 
         $agentesAsignados = $this->getAgentesAsignados();
         $listaCobradores = User::agente()->activo()
@@ -1640,6 +1670,9 @@ class reportesController extends Controller
             })
             ->when($frecuencia,function ($query) use ($frecuencia){
                 $query->where('forma_pago_tipo',$frecuencia);
+            })
+            ->when(count($agentesAsignados), function ($query) use ($agentesAsignados) {
+                $query->whereIn('agente_id', $agentesAsignados);
             })
             ->whereNotIn('estado', [4, 2])
             ->orderBy('id','desc');
